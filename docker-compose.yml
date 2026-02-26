@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    volumes:
+      - .:/app
+    tty: true
+    stdin_open: true
+    environment:
+      - DISPLAY=${DISPLAY} # For Linux/WSL GUI forwarding
+    network_mode: "host"
+    privileged: true
