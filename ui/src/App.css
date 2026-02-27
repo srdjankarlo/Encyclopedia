@@ -6,10 +6,13 @@
 .react-resizable { position: relative; }
 
 .column { 
-  height: 100%; background: #1a1a1a; 
+  height: 100%; 
+  background: #1a1a1a; 
   border-right: 1px solid #333; 
-  display: flex; flex-direction: column; 
-  width: 100%; /* Important for ResizableBox */
+  display: flex; 
+  flex-direction: column; 
+  width: 100%;
+  overflow: hidden; 
 }
 
 .column-header { 
@@ -30,6 +33,13 @@
 .tab-title { flex-grow: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .tab-row input { background: #333; border: 1px solid #007acc; color: white; padding: 2px 5px; width: 100%; outline: none; }
+
+/* Branch highlighting */
+.tab-row.branch-active:not(.active) {
+  background: rgba(0, 122, 204, 0.1);
+  border-left: 3px solid #007acc;
+  color: #007acc;
+}
 
 .tab-actions { display: flex; gap: 8px; }
 
@@ -143,4 +153,250 @@
 
 .editor-toolbar button:hover:not(.is-active) {
   background: #f0f0f0;
+}
+
+.header-title { flex-grow: 1; overflow: hidden; text-overflow: ellipsis; }
+
+.sort-cycle-btn {
+  background: #333;
+  border: none;
+  color: #007acc;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 5px;
+}
+
+.sort-cycle-btn:hover { background: #444; color: #fff; }
+
+.search-bar {
+  flex-shrink: 0;
+  padding: 8px;
+  background: #222;
+  border-bottom: 1px solid #333;
+  position: sticky; /* Keep it at the top */
+  top: 0;
+}
+
+.search-bar input {
+  width: 100%;
+  background: #121212;
+  border: 1px solid #444;
+  color: #eee;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.search-bar input:focus { border-color: #007acc; }
+
+.tab-list { 
+  flex-grow: 1; 
+  overflow-y: auto; /* This allows the tabs to scroll while search stays put */
+  min-height: 0;    /* Important fix for flexbox scrolling */
+}
+
+.sort-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+.sort-buttons button {
+  background: #333;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 9px;
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+.sort-buttons button.active {
+  color: #fff;
+  background: #007acc;
+}
+
+.header-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #ddd;
+}
+
+.section-label {
+  font-size: 10px;
+  font-weight: bold;
+  color: #888;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.button-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.button-row button {
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  background: white;
+}
+
+.button-row button.active {
+  background: #007bff;
+  color: white;
+  border-color: #0056b3;
+}
+
+.export-btn { color: #28a745; }
+.import-btn { color: #fd7e14; }
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(1);
+  border-style: dashed;
+}
+
+/* --- MODAL STYLES --- */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.export-modal {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  padding: 24px;
+  border-radius: 8px;
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  color: #eee;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-field label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #888;
+  font-weight: bold;
+}
+
+.modal-field input, .modal-field select {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: white;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.confirm-btn {
+  background: #007acc;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.cancel-btn {
+  background: transparent;
+  color: #888;
+  border: 1px solid #444;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cancel-btn:hover {
+  color: white;
+  border-color: #666;
+}
+
+.confirm-btn:hover {
+  background: #008ae6;
+}
+
+/* Tree Selector in Modal */
+.export-modal.large {
+  width: 500px;
+  max-height: 80vh;
+}
+
+.tree-selector {
+  flex-grow: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-container {
+  background: #121212;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 15px;
+  overflow-y: auto;
+  max-height: 300px;
+  margin-top: 5px;
+}
+
+.modal-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.modal-checkbox-row:hover {
+  background: #252525;
+}
+
+.modal-tab-name {
+  font-size: 13px;
+  color: #eee;
+}
+
+.modal-checkbox-row input[type="checkbox"] {
+  accent-color: #007acc;
+  cursor: pointer;
+}
+
+/* Better focus visibility for keyboard users */
+.tab-row:focus {
+  outline: 2px solid #007acc;
+  outline-offset: -2px;
+  background: rgba(0, 122, 204, 0.15);
+}
+
+.tab-row:focus .tab-title {
+  font-weight: bold;
 }
