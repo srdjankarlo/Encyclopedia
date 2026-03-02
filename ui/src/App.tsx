@@ -34,6 +34,7 @@ export default function App() {
   const isInitialMount = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
 
   // Export State
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -42,7 +43,7 @@ export default function App() {
   const [exportFormat, setExportFormat] = useState<'txt' | 'json'>('txt');
 
   // --- SYNC LOGIC (Update this section) ---
-useEffect(() => {
+  useEffect(() => {
     const loadFromDb = async () => {
       try {
         const res = await fetch(`${API_URL}/tabs`);
@@ -87,6 +88,13 @@ useEffect(() => {
     loadFromDb();
   }, []);
 
+  const handleManualRetry = () => {
+    setSaveStatus('saving');
+    // This triggers the useEffect dependency [windows] by creating a shallow copy
+    // or you can extract the save logic into a named function to call here.
+    setWindows(prev => ({ ...prev })); 
+  };
+
   // --- UPDATED SYNC LOGIC ---
   useEffect(() => {
     if (isInitialMount.current) { isInitialMount.current = false; return; }
@@ -115,6 +123,7 @@ useEffect(() => {
 
         await Promise.all(promises);
         setSaveStatus('saved');
+        setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       } catch (e) {
         console.error("Save failed", e);
         setSaveStatus('error');
@@ -520,10 +529,22 @@ useEffect(() => {
                   <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''}>I</button>
                 </div>
                 {/* SYNC INDICATOR */}
-                <div className={`sync-indicator ${saveStatus}`}>
-                  {saveStatus === 'saving' && "● Syncing..."}
-                  {saveStatus === 'saved' && "✓ Saved"}
-                  {saveStatus === 'error' && "⚠ Sync Error"}
+                <div className="sync-indicator-container">
+                  <div className={`sync-indicator ${saveStatus}`}>
+                    {saveStatus === 'saving' && "● Syncing..."}
+                    {saveStatus === 'saved' && (
+                      <div className="saved-group">
+                        <span>✓ Saved</span>
+                        {lastSaved && <span className="save-time">at {lastSaved}</span>}
+                      </div>
+                    )}
+                    {saveStatus === 'error' && (
+                      <div className="error-group">
+                        <span>⚠ Sync Error</span>
+                        <button className="retry-sync-btn" onClick={handleManualRetry}>Retry</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <EditorContent editor={editor} className="rich-editor" />

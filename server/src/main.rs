@@ -3,6 +3,7 @@ use sqlx::{postgres::PgPoolOptions, Pool, Postgres, Row};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
+use axum::http::StatusCode; // Add this to your imports
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Tab {
@@ -27,7 +28,23 @@ async fn main() {
         .await
         .expect("Failed to connect to Postgres");
 
-    println!("✅ Successfully connected to PostgreSQL!");
+    println!("✅ Connected! Ensuring table exists...");
+
+    // NEW: Auto-create table if it doesn't exist
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS tabs (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            child_window_id TEXT,
+            parent_id TEXT,
+            created_at BIGINT NOT NULL
+        );"
+    )
+    .execute(&pool)
+    .await;
+
+    println!("🚀 Server is ready and table is verified!");
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -63,8 +80,12 @@ async fn get_tabs(State(pool): State<Pool<Postgres>>) -> Json<Vec<Tab>> {
     Json(tabs)
 }
 
-async fn save_tab(State(pool): State<Pool<Postgres>>, Json(tab): Json<Tab>) -> &'static str {
-    sqlx::query(
+async fn save_tab(
+    State(pool): State<Pool<Postgres>>, 
+    Json(tab): Json<Tab>
+) -> Result<&'static str, (StatusCode, String)> {
+    
+    let result = sqlx::query(
         "INSERT INTO tabs (id, title, content, child_window_id, parent_id, created_at) 
          VALUES ($1, $2, $3, $4, $5, $6) 
          ON CONFLICT (id) DO UPDATE SET 
@@ -80,8 +101,16 @@ async fn save_tab(State(pool): State<Pool<Postgres>>, Json(tab): Json<Tab>) -> &
     .bind(&tab.parent_id)
     .bind(tab.created_at)
     .execute(&pool)
-    .await
-    .expect("Failed to save tab");
-    
-    "OK"
+    .await;
+
+    match result {
+        Ok(_) => Ok("OK"),
+        Err(e) => {
+            eprintln!("❌ Database Error: {:?}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR, 
+                format!("Database Error: {}", e)
+            ))
+        }
+    }
 }

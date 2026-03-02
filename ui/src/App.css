@@ -487,3 +487,53 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
 }
+
+.sync-indicator-container {
+  display: flex;
+  align-items: center;
+}
+
+.error-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.retry-sync-btn {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  transition: background 0.2s;
+}
+
+.retry-sync-btn:hover {
+  background: #c0392b;
+}
+
+.sync-indicator.error {
+  color: #ff4d4d;
+}
+
+.saved-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.save-time {
+  font-size: 11px;
+  opacity: 0.7;
+  font-family: 'Courier New', Courier, monospace; /* Notepad++ vibe */
+}
+
+/* Make sure the container doesn't jump around when text changes */
+.sync-indicator-container {
+  min-width: 150px; 
+  justify-content: flex-end;
+}
