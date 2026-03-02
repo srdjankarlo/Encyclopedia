@@ -30,7 +30,7 @@ export default function App() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
-  const [sortConfigs, setSortConfigs] = useState<Record<string, SortMode>>({});
+  const [globalSortMode, setGlobalSortMode] = useState<SortMode>('oldest');
   const isInitialMount = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -41,6 +41,20 @@ export default function App() {
   const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(new Set());
   const [exportFileName, setExportFileName] = useState('My_Encyclopedia');
   const [exportFormat, setExportFormat] = useState<'txt' | 'json'>('txt');
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    // Check if the user has a preference saved in local storage
+    return localStorage.getItem('theme') === 'dark';
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.body.classList.add('dark-theme');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.body.classList.remove('dark-theme');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
 
   // --- SYNC LOGIC (Update this section) ---
   useEffect(() => {
@@ -408,7 +422,7 @@ export default function App() {
           if (!win) return null;
           const isCollapsed = win.collapsed;
           const query = searchQueries[winId]?.toLowerCase() || "";
-          const sortMode = sortConfigs[winId] || 'oldest';
+          const sortMode = globalSortMode;
           const displayTabs = [...win.tabs].filter(t => t.title.toLowerCase().includes(query));
 
           if (sortMode === 'alpha') displayTabs.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
@@ -423,15 +437,20 @@ export default function App() {
                   <span className="header-title">{findParentInfo(winId).title}</span>
                   {!isCollapsed && (
                     <div className="header-controls">
-                      <div className="control-section">
-                        <span className="section-label">SORTING</span>
-                        <div className="button-row">
-                          <button className={sortMode === 'oldest' ? 'active' : ''} onClick={() => setSortConfigs(p => ({ ...p, [winId]: 'oldest' }))}>OLDEST</button>
-                          <button className={sortMode === 'newest' ? 'active' : ''} onClick={() => setSortConfigs(p => ({ ...p, [winId]: 'newest' }))}>NEWEST</button>
-                          <button className={sortMode === 'alpha' ? 'active' : ''} onClick={() => setSortConfigs(p => ({ ...p, [winId]: 'alpha' }))}>A-Z</button>
-                          <button className={sortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setSortConfigs(p => ({ ...p, [winId]: 'alpha-desc' }))}>Z-A</button>
+                      {/* ONLY SHOW SORTING IN ROOT */}
+                      {winId === 'root' && (
+                        <div className="control-section">
+                          <span className="section-label">GLOBAL SORTING</span>
+                          <div className="button-row">
+                            <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>OLDEST</button>
+                            <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>NEWEST</button>
+                            <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
+                            <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {/* SYSTEM CONTROLS (Keep in root) */}
                       {winId === 'root' && (
                         <div className="control-section">
                           <span className="section-label">SYSTEM</span>
@@ -444,6 +463,13 @@ export default function App() {
                             {/* NEW BUTTON */}
                             <button className="toggle-all-btn" onClick={toggleAllWindows} title="Toggle all sub-windows">
                               {Object.values(windows).some(w => w.id !== 'root' && !w.collapsed) ? 'COLLAPSE ALL' : 'EXPAND ALL'}
+                            </button>
+                            <button 
+                              className="theme-toggle-btn" 
+                              onClick={() => setIsDarkMode(!isDarkMode)}
+                              title="Toggle Dark/Light Mode"
+                            >
+                              {isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}
                             </button>
                             <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={handleImport} />
                           </div>
