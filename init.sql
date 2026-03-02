@@ -3,7 +3,10 @@ CREATE TABLE IF NOT EXISTS tabs (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     content TEXT DEFAULT '',
-    parent_id TEXT REFERENCES tabs(id) ON DELETE CASCADE,
+    -- This stores which window ID this tab "opened"
+    child_window_id TEXT, 
+    -- This stores the ID of the window this tab LIVES in
+    parent_id TEXT, 
     created_at BIGINT NOT NULL
 );
 

@@ -41,25 +41,48 @@ export default function App() {
   const [exportFileName, setExportFileName] = useState('My_Encyclopedia');
   const [exportFormat, setExportFormat] = useState<'txt' | 'json'>('txt');
 
-  // --- SYNC LOGIC ---
-  useEffect(() => {
+  // --- SYNC LOGIC (Update this section) ---
+useEffect(() => {
     const loadFromDb = async () => {
       try {
         const res = await fetch(`${API_URL}/tabs`);
         const dbTabs: any[] = await res.json();
-        if (dbTabs.length === 0) {
+        console.log("📦 Data received from DB:", dbTabs);
+
+        if (!dbTabs || dbTabs.length === 0) {
           setWindows({ 'root': { id: 'root', tabs: [{ id: 'init-1', title: 'New Tab 1', content: '', createdAt: Date.now() }] } });
         } else {
+          // Initialize with root window
           const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
-          dbTabs.forEach(t => { if (t.childWindowId && !newWindows[t.childWindowId]) newWindows[t.childWindowId] = { id: t.childWindowId, tabs: [] }; });
+
+          // 1. Create any windows that are referenced by tabs as "childWindowId"
           dbTabs.forEach(t => {
-            const ownerWinId = dbTabs.find(parent => parent.childWindowId === t.parentId)?.childWindowId || 'root';
-            if (!newWindows[ownerWinId]) newWindows[ownerWinId] = { id: ownerWinId, tabs: [] };
-            newWindows[ownerWinId].tabs.push({ id: t.id, title: t.title, content: t.content, childWindowId: t.childWindowId, createdAt: Number(t.created_at) });
+            if (t.child_window_id && !newWindows[t.child_window_id]) {
+              newWindows[t.child_window_id] = { id: t.child_window_id, tabs: [], collapsed: false };
+            }
           });
+
+          // 2. Sort tabs into their parent windows
+          dbTabs.forEach(t => {
+            // If parent_id is null/empty, it belongs in 'root'. 
+            // Otherwise, it belongs in the window matching its parent_id.
+            const targetWinId = (t.parent_id && newWindows[t.parent_id]) ? t.parent_id : 'root';
+            
+            newWindows[targetWinId].tabs.push({
+              id: t.id,
+              title: t.title,
+              content: t.content,
+              childWindowId: t.child_window_id,
+              createdAt: Number(t.created_at)
+            });
+          });
+
+          console.log("🏗️ Reconstructed Windows:", newWindows);
           setWindows(newWindows);
         }
-      } catch (e) { console.error("DB Load failed", e); }
+      } catch (e) {
+        console.error("❌ DB Load failed", e);
+      }
     };
     loadFromDb();
   }, []);
@@ -73,7 +96,7 @@ export default function App() {
 
     const timer = setTimeout(async () => {
       try {
-        const promises = Object.values(windows).flatMap(win => 
+        const promises = Object.entries(windows).flatMap(([winId, win]) => 
           win.tabs.map(tab => 
             fetch(`${API_URL}/tabs`, {
               method: 'POST',
@@ -82,7 +105,8 @@ export default function App() {
                 id: tab.id, 
                 title: tab.title, 
                 content: tab.content, 
-                parent_id: tab.childWindowId || null, 
+                child_window_id: tab.childWindowId || null, 
+                parent_id: winId === 'root' ? null : winId, // IMPORTANT: The window ID is the parent
                 created_at: tab.createdAt 
               }),
             })

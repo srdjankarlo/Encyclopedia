@@ -1,41 +1,46 @@
-
 services:
-  # The UI we've been working on
   ui:
-    build:
-      context: ./ui
-      dockerfile: Dockerfile
+    build: ./ui
+    container_name: encyclopedia-ui
     ports:
       - "5173:5173"
     volumes:
       - ./ui:/app
-      - /app/node_modules
+      - /app/node_modules # Critical: keeps Linux modules separate from Windows
     environment:
       - VITE_API_URL=http://localhost:8080
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host"
 
-  # The Rust Backend (We will create this next)
   server:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
+    build: ./server
+    container_name: encyclopedia-server
     ports:
       - "8080:8080"
     volumes:
       - ./server:/app
+      - /app/target # Keeps Rust build files inside container
     environment:
       - DATABASE_URL=postgres://user:pass@db:5432/miller_db
+    working_dir: /app
+    # This command makes the server restart if it crashes
+    command: cargo run 
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
-  # The PostgreSQL Database
   db:
     image: postgres:15-alpine
+    container_name: encyclopedia-db
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=pass
       - POSTGRES_DB=miller_db
-    ports:
-      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d miller_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql

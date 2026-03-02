@@ -6,16 +6,19 @@ use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Tab {
-    id: String,       // Fixed: Capital S
+    id: String,
     title: String,
     content: String,
+    child_window_id: Option<String>,
     parent_id: Option<String>,
     created_at: i64,
 }
 
 #[tokio::main]
 async fn main() {
+    // Give DB time to breathe on slower work laptops
     tokio::time::sleep(Duration::from_secs(2)).await;
+    
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
     let pool = PgPoolOptions::new()
@@ -43,8 +46,7 @@ async fn main() {
 }
 
 async fn get_tabs(State(pool): State<Pool<Postgres>>) -> Json<Vec<Tab>> {
-    // Switched to runtime query to avoid "online check" errors during build
-    let rows = sqlx::query("SELECT id, title, content, parent_id, created_at FROM tabs")
+    let rows = sqlx::query("SELECT id, title, content, child_window_id, parent_id, created_at FROM tabs")
         .fetch_all(&pool)
         .await
         .unwrap_or_default();
@@ -53,6 +55,7 @@ async fn get_tabs(State(pool): State<Pool<Postgres>>) -> Json<Vec<Tab>> {
         id: row.get("id"),
         title: row.get("title"),
         content: row.get("content"),
+        child_window_id: row.get("child_window_id"),
         parent_id: row.get("parent_id"),
         created_at: row.get("created_at"),
     }).collect();
@@ -62,13 +65,18 @@ async fn get_tabs(State(pool): State<Pool<Postgres>>) -> Json<Vec<Tab>> {
 
 async fn save_tab(State(pool): State<Pool<Postgres>>, Json(tab): Json<Tab>) -> &'static str {
     sqlx::query(
-        "INSERT INTO tabs (id, title, content, parent_id, created_at) 
-         VALUES ($1, $2, $3, $4, $5) 
-         ON CONFLICT (id) DO UPDATE SET title = $2, content = $3, parent_id = $4"
+        "INSERT INTO tabs (id, title, content, child_window_id, parent_id, created_at) 
+         VALUES ($1, $2, $3, $4, $5, $6) 
+         ON CONFLICT (id) DO UPDATE SET 
+            title = $2, 
+            content = $3, 
+            child_window_id = $4, 
+            parent_id = $5"
     )
     .bind(&tab.id)
     .bind(&tab.title)
     .bind(&tab.content)
+    .bind(&tab.child_window_id)
     .bind(&tab.parent_id)
     .bind(tab.created_at)
     .execute(&pool)

@@ -1,17 +1,7 @@
 {
-  "name": "Encyclopedia Dev Environment",
+  "name": "Encyclopedia",
   "dockerComposeFile": "../docker-compose.yml",
-  "service": "app",
-  "workspaceFolder": "/app",
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "rust-lang.rust-analyzer",
-        "tauri-apps.tauri-vscode",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode"
-      ]
-    }
-  },
+  "service": "ui",
+  "workspaceFolder": "/app", 
   "remoteUser": "root"
 }
