@@ -33,6 +33,7 @@ export default function App() {
   const [sortConfigs, setSortConfigs] = useState<Record<string, SortMode>>({});
   const isInitialMount = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
 
   // Export State
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -63,23 +64,68 @@ export default function App() {
     loadFromDb();
   }, []);
 
+  // --- UPDATED SYNC LOGIC ---
   useEffect(() => {
     if (isInitialMount.current) { isInitialMount.current = false; return; }
-    const timer = setTimeout(() => {
-      Object.values(windows).forEach(win => {
-        win.tabs.forEach(async (tab) => {
-          try {
-            await fetch(`${API_URL}/tabs`, {
+    
+    // Set to saving as soon as changes are detected
+    setSaveStatus('saving');
+
+    const timer = setTimeout(async () => {
+      try {
+        const promises = Object.values(windows).flatMap(win => 
+          win.tabs.map(tab => 
+            fetch(`${API_URL}/tabs`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: tab.id, title: tab.title, content: tab.content, parent_id: tab.childWindowId || null, created_at: tab.createdAt }),
-            });
-          } catch (e) { console.error("Save failed", e); }
-        });
-      });
+              body: JSON.stringify({ 
+                id: tab.id, 
+                title: tab.title, 
+                content: tab.content, 
+                parent_id: tab.childWindowId || null, 
+                created_at: tab.createdAt 
+              }),
+            })
+          )
+        );
+
+        await Promise.all(promises);
+        setSaveStatus('saved');
+      } catch (e) {
+        console.error("Save failed", e);
+        setSaveStatus('error');
+      }
     }, 1000);
+
     return () => clearTimeout(timer);
   }, [windows]);
+
+  // --- NEW: COLLAPSE/EXPAND ALL ---
+  const toggleAllWindows = () => {
+    setWindows(prev => {
+      // Check if there are any windows (besides root) that are currently expanded
+      const anyExpanded = Object.entries(prev).some(([id, win]) => id !== 'root' && !win.collapsed);
+      
+      const next = { ...prev };
+      Object.keys(next).forEach(id => {
+        if (id !== 'root') {
+          // If any were expanded, collapse them all. Otherwise, expand them all.
+          next[id] = { ...next[id], collapsed: anyExpanded };
+        }
+      });
+      return next;
+    });
+  };
+
+  // --- NEW: STATS CALCULATOR ---
+  const getEditorStats = () => {
+    if (!editor) return { chars: 0, words: 0, lines: 0 };
+    const text = editor.getText();
+    const lines = text.split(/\r\n|\r|\n/).length;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const chars = text.length;
+    return { chars, words, lines };
+  };
 
   // --- HELPERS ---
   const findParentInfo = (childWinId: string) => {
@@ -362,7 +408,18 @@ export default function App() {
                                 setIsExportModalOpen(true);
                             }}>EXPORT</button>
                             <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
+                            {/* NEW BUTTON */}
+                            <button className="toggle-all-btn" onClick={toggleAllWindows} title="Toggle all sub-windows">
+                              {Object.values(windows).some(w => w.id !== 'root' && !w.collapsed) ? 'COLLAPSE ALL' : 'EXPAND ALL'}
+                            </button>
                             <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={handleImport} />
+                          </div>
+                          {/* NEW SHORTCUTS PANEL (ROOT ONLY) */}
+                          <div className="shortcuts-legend">
+                            <div className="legend-item"><b>ENTER</b> Select</div>
+                            <div className="legend-item"><b>F2</b> Rename</div>
+                            <div className="legend-item"><b>DEL</b> Delete</div>
+                            <div className="legend-item"><b>DBL-CLK</b> Toggle Width</div>
                           </div>
                         </div>
                       )}
@@ -434,10 +491,25 @@ export default function App() {
           {activeTabId && editor ? (
             <div className="editor-wrapper">
               <div className="editor-toolbar">
-                <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''}>B</button>
-                <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''}>I</button>
+                <div className="tools">
+                  <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''}>B</button>
+                  <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''}>I</button>
+                </div>
+                {/* SYNC INDICATOR */}
+                <div className={`sync-indicator ${saveStatus}`}>
+                  {saveStatus === 'saving' && "● Syncing..."}
+                  {saveStatus === 'saved' && "✓ Saved"}
+                  {saveStatus === 'error' && "⚠ Sync Error"}
+                </div>
               </div>
               <EditorContent editor={editor} className="rich-editor" />
+              {/* STATS FOOTER (Notepad++ Style) */}
+              <div className="editor-footer">
+                <div className="stat">Length: <span>{getEditorStats().chars}</span></div>
+                <div className="stat">Words: <span>{getEditorStats().words}</span></div>
+                <div className="stat">Lines: <span>{getEditorStats().lines}</span></div>
+                <div className="stat-right">UTF-8 | Windows (CR LF)</div>
+              </div>
             </div>
           ) : <div className="empty-state">Select an item to edit content.</div>}
         </div>
