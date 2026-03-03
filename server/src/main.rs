@@ -1,9 +1,12 @@
-use axum::{routing::{get, post}, Router, Json, extract::State};
+use axum::{
+    routing::{get, post, delete}, // Added delete here
+    Router, Json, extract::{State, Path}, 
+    http::StatusCode
+};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres, Row};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
-use axum::http::StatusCode; // Add this to your imports
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Tab {
@@ -17,7 +20,6 @@ struct Tab {
 
 #[tokio::main]
 async fn main() {
-    // Give DB time to breathe on slower work laptops
     tokio::time::sleep(Duration::from_secs(2)).await;
     
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -28,9 +30,8 @@ async fn main() {
         .await
         .expect("Failed to connect to Postgres");
 
-    println!("✅ Connected! Ensuring table exists...");
+    println!("✅ Connected and verifying table...");
 
-    // NEW: Auto-create table if it doesn't exist
     let _ = sqlx::query(
         "CREATE TABLE IF NOT EXISTS tabs (
             id TEXT PRIMARY KEY,
@@ -44,16 +45,16 @@ async fn main() {
     .execute(&pool)
     .await;
 
-    println!("🚀 Server is ready and table is verified!");
-
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_headers(Any)
+        .allow_methods(Any);
 
+    // Added the DELETE route with a path parameter :id
     let app = Router::new()
         .route("/health", get(|| async { "Backend is healthy!" }))
         .route("/tabs", get(get_tabs).post(save_tab))
+        .route("/tabs/:id", delete(delete_tab)) 
         .layer(cors)
         .with_state(pool);
 
@@ -61,6 +62,8 @@ async fn main() {
     println!("🚀 Server running on 0.0.0.0:8080");
     axum::serve(listener, app).await.unwrap();
 }
+
+// --- HANDLERS ---
 
 async fn get_tabs(State(pool): State<Pool<Postgres>>) -> Json<Vec<Tab>> {
     let rows = sqlx::query("SELECT id, title, content, child_window_id, parent_id, created_at FROM tabs")
@@ -84,7 +87,6 @@ async fn save_tab(
     State(pool): State<Pool<Postgres>>, 
     Json(tab): Json<Tab>
 ) -> Result<&'static str, (StatusCode, String)> {
-    
     let result = sqlx::query(
         "INSERT INTO tabs (id, title, content, child_window_id, parent_id, created_at) 
          VALUES ($1, $2, $3, $4, $5, $6) 
@@ -106,11 +108,30 @@ async fn save_tab(
     match result {
         Ok(_) => Ok("OK"),
         Err(e) => {
-            eprintln!("❌ Database Error: {:?}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR, 
-                format!("Database Error: {}", e)
-            ))
+            eprintln!("❌ DB Error (Save): {:?}", e);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("DB Error: {}", e)))
+        }
+    }
+}
+
+// NEW: Delete Handler
+async fn delete_tab(
+    State(pool): State<Pool<Postgres>>,
+    Path(id): Path<String> // Extracts the :id from the URL
+) -> Result<StatusCode, (StatusCode, String)> {
+    let result = sqlx::query("DELETE FROM tabs WHERE id = $1")
+        .bind(&id)
+        .execute(&pool)
+        .await;
+
+    match result {
+        Ok(_) => {
+            println!("🗑️ Deleted tab: {}", id);
+            Ok(StatusCode::NO_CONTENT)
+        },
+        Err(e) => {
+            eprintln!("❌ DB Error (Delete): {:?}", e);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("DB Error: {}", e)))
         }
     }
 }

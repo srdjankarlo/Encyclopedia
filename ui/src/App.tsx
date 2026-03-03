@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ResizableBox } from 'react-resizable';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import TiptapImage from '@tiptap/extension-image';
+// import TiptapImage from '@tiptap/extension-image';
 import './App.css';
 
 const API_URL = "http://localhost:8080";
@@ -326,7 +326,7 @@ export default function App() {
   };
 
   // --- ACTIONS ---
-  const deleteTab = (windowId: string, tabId: string) => {
+  const deleteTab = async (windowId: string, tabId: string) => {
     const tabToDelete = windows[windowId].tabs.find(t => t.id === tabId);
     if (!tabToDelete) return;
 
@@ -334,17 +334,39 @@ export default function App() {
     const confirmMsg = `Are you sure you want to delete "${tabToDelete.title}"? This will also delete all nested sub-items.`;
     if (!window.confirm(confirmMsg)) return;
 
+    // 1. Keep track of all IDs we are about to delete
+    const idsToDelete: string[] = [tabId];
+
     const next = { ...windows };
     const collectWindows = (winId: string | undefined) => {
       if (!winId || !next[winId]) return;
-      next[winId].tabs.forEach(t => collectWindows(t.childWindowId));
+      next[winId].tabs.forEach(t => {
+        idsToDelete.push(t.id); // Collect nested tab IDs
+        collectWindows(t.childWindowId);
+      });
       delete next[winId];
     };
     
     collectWindows(tabToDelete.childWindowId);
     next[windowId].tabs = next[windowId].tabs.filter(t => t.id !== tabId);
     setActivePath(activePath.filter(id => id === 'root' || next[id]));
+    
+    // 2. Update UI instantly
     setWindows(next);
+
+    // 3. Tell the database to physically delete them
+    try {
+      setSaveStatus('saving');
+      // Sends a DELETE request for the main tab and all its children
+      await Promise.all(idsToDelete.map(id => 
+        fetch(`${API_URL}/tabs/${id}`, { method: 'DELETE' }) 
+      ));
+      setSaveStatus('saved');
+      setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    } catch (e) {
+      console.error("Failed to delete from DB", e);
+      setSaveStatus('error');
+    }
   };
 
   const handleTabClick = (windowId: string, tab: Tab, depth: number) => {
@@ -362,7 +384,7 @@ export default function App() {
   };
 
   const editor = useEditor({
-    extensions: [StarterKit, TiptapImage],
+    extensions: [StarterKit],
     content: '',
     onUpdate: ({ editor }) => {
       if (!activeTabId) return;
