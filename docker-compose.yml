@@ -1,4 +1,23 @@
 services:
+  # 1. THE UNIFIED DEV ENVIRONMENT (VS Code will live here)
+  dev-env:
+    build: 
+      context: .
+      dockerfile: Dockerfile # That Ubuntu one you sent
+    container_name: encyclopedia-dev
+    tty: true
+    stdin_open: true
+    volumes:
+      - .:/app # Mounts everything (ui, server, and root files)
+      - /app/ui/node_modules
+      - /app/server/target
+    environment:
+      - VITE_API_URL=http://localhost:8080
+      - DATABASE_URL=postgres://user:pass@db:5432/miller_db
+    depends_on:
+      - ui
+      - server
+
   ui:
     build: ./ui
     container_name: encyclopedia-ui
@@ -6,11 +25,13 @@ services:
       - "5173:5173"
     volumes:
       - ./ui:/app
-      - /app/node_modules # Critical: keeps Linux modules separate from Windows
+      - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8080
-    working_dir: /app
     command: sh -c "npm install && npm run dev -- --host"
+    depends_on:
+      server:
+        condition: service_started
 
   server:
     build: ./server
@@ -19,12 +40,10 @@ services:
       - "8080:8080"
     volumes:
       - ./server:/app
-      - /app/target # Keeps Rust build files inside container
+      - /app/target
     environment:
       - DATABASE_URL=postgres://user:pass@db:5432/miller_db
-    working_dir: /app
-    # This command makes the server restart if it crashes
-    command: cargo run 
+    command: cargo watch -x run
     depends_on:
       db:
         condition: service_healthy
@@ -43,7 +62,6 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
 volumes:
   postgres_data:

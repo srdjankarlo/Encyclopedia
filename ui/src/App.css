@@ -279,8 +279,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); borde
 .modal-field label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: bold; display: block; margin-bottom: 5px;}
 .modal-field input, .modal-field select { background: var(--bg-sidebar); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 4px; width: 100%; box-sizing: border-box;}
 
-.tree-selector { flex-grow: 1; overflow: hidden; display: flex; flex-direction: column; }
-.tree-container { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 15px; overflow-y: auto; max-height: 300px; }
+.tree-selector { flex-grow: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: center}
+.tree-container { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 15px; overflow-y: auto; max-height: 300px; justify-content: center}
 
 .modal-checkbox-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; cursor: pointer; }
 .modal-checkbox-row:hover { background: var(--hover-color); }

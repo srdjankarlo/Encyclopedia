@@ -1,12 +1,19 @@
 FROM rustlang/rust:nightly-slim
 
 WORKDIR /app
-RUN apt-get update && apt-get install -y libssl-dev pkg-config ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# Install system dependencies and cargo-watch
+RUN apt-get update && apt-get install -y \
+    libssl-dev \
+    pkg-config \
+    ca-certificates \
+    && cargo install cargo-watch \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 
-# We build it first to save time on restarts
-RUN cargo build --release
+# Pre-build the project dependencies to speed up container starts
+RUN cargo build
 
-# Instead of pointing to a path that might shift, we let cargo run the release binary
-CMD ["cargo", "run", "--release"]
+# Default command (will be overridden by docker-compose for dev)
+CMD ["cargo", "run"]

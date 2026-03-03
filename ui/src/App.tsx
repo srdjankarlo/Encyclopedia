@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ResizableBox } from 'react-resizable';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -11,7 +11,6 @@ interface Tab {
   id: string;
   title: string;
   content: string;
-  childWindowId?: string;
   createdAt: number;
   parentId?: string; // Added for DB structural clarity
 }
@@ -62,39 +61,38 @@ export default function App() {
       try {
         const res = await fetch(`${API_URL}/tabs`);
         const dbTabs: any[] = await res.json();
-        console.log("📦 Data received from DB:", dbTabs);
 
         if (!dbTabs || dbTabs.length === 0) {
-          setWindows({ 'root': { id: 'root', tabs: [{ id: 'init-1', title: 'New Tab 1', content: '', createdAt: Date.now() }] } });
-        } else {
-          // Initialize with root window
-          const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
-
-          // 1. Create any windows that are referenced by tabs as "childWindowId"
-          dbTabs.forEach(t => {
-            if (t.child_window_id && !newWindows[t.child_window_id]) {
-              newWindows[t.child_window_id] = { id: t.child_window_id, tabs: [], collapsed: false };
-            }
-          });
-
-          // 2. Sort tabs into their parent windows
-          dbTabs.forEach(t => {
-            // If parent_id is null/empty, it belongs in 'root'. 
-            // Otherwise, it belongs in the window matching its parent_id.
-            const targetWinId = (t.parent_id && newWindows[t.parent_id]) ? t.parent_id : 'root';
-            
-            newWindows[targetWinId].tabs.push({
-              id: t.id,
-              title: t.title,
-              content: t.content,
-              childWindowId: t.child_window_id,
-              createdAt: Number(t.created_at)
-            });
-          });
-
-          console.log("🏗️ Reconstructed Windows:", newWindows);
-          setWindows(newWindows);
+          setWindows({ 'root': { id: 'root', tabs: [] } });
+          return;
         }
+
+        const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
+
+        // First pass: Create windows for any tab that acts as a parent
+        dbTabs.forEach(t => {
+          if (t.id) { // Every tab potentially has a child window
+            newWindows[t.id] = { id: t.id, tabs: [], collapsed: false };
+          }
+        });
+
+        // Second pass: Put tabs into their parents' windows
+        dbTabs.forEach(t => {
+          const targetWinId = t.parent_id || 'root';
+          if (!newWindows[targetWinId]) {
+            newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
+          }
+
+          newWindows[targetWinId].tabs.push({
+            id: t.id,
+            title: t.title,
+            content: t.content,
+            createdAt: Number(t.created_at),
+            parentId: t.parent_id // Keep track of parent
+          });
+        });
+
+        setWindows(newWindows);
       } catch (e) {
         console.error("❌ DB Load failed", e);
       }
@@ -127,8 +125,9 @@ export default function App() {
                 id: tab.id, 
                 title: tab.title, 
                 content: tab.content, 
-                child_window_id: tab.childWindowId || null, 
-                parent_id: winId === 'root' ? null : winId, // IMPORTANT: The window ID is the parent
+                // CHANGE: if winId is 'root', parent_id is null. Otherwise, it's the winId.
+                parent_id: winId === 'root' ? null : winId, 
+                child_window_id: tab.id, // The tab's ID is the window it opens
                 created_at: tab.createdAt 
               }),
             })
@@ -175,54 +174,96 @@ export default function App() {
   };
 
   // --- HELPERS ---
-  const findParentInfo = (childWinId: string) => {
-    if (childWinId === 'root') return { title: "LIBRARY", fullPath: "" };
+  const findParentInfo = (currentWinId: string) => {
+    if (currentWinId === 'root') return { title: "LIBRARY", fullPath: "New Tab" };
+
+    // In the new system, currentWinId IS the parent's tab ID
     for (const winId in windows) {
-      const parentTab = windows[winId].tabs.find(t => t.childWindowId === childWinId);
+      const parentTab = windows[winId].tabs.find(t => t.id === currentWinId);
       if (parentTab) {
-        const path = parentTab.title.startsWith('New Tab ') ? parentTab.title.replace('New Tab ', '') : parentTab.title;
-        return { title: parentTab.title.toUpperCase(), fullPath: path };
+        return { 
+          title: parentTab.title.toUpperCase(), 
+          fullPath: parentTab.title 
+        };
       }
     }
-    return { title: "SUB-LEVEL", fullPath: "" };
+    return { title: "SUB-LEVEL", fullPath: "Sub" };
   };
 
   const addTab = (windowId: string) => {
     const info = findParentInfo(windowId);
     const win = windows[windowId];
     if (!win) return;
+
+    // 1. Calculate the next increment number
     let maxNum = 0;
     win.tabs.forEach(t => {
+      // If title is "Research.2", we split by "." and get the "2"
       const parts = t.title.split('.');
       const lastPart = parts[parts.length - 1];
-      const num = parseInt(lastPart.replace('New Tab ', ''));
-      if (!isNaN(num) && num > maxNum) maxNum = num;
+      
+      // Also handle the "New Tab 1" case for the root
+      const numMatch = lastPart.match(/\d+/);
+      if (numMatch) {
+        const num = parseInt(numMatch[0]);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
     });
+
     const nextNum = maxNum + 1;
-    const newTitle = windowId === 'root' ? `New Tab ${nextNum}` : `${info.fullPath}.${nextNum}`;
+
+    // 2. Format the title
+    // If root: "New Tab 1", "New Tab 2"
+    // If sub: "Parent.1", "Parent.2"
+    const newTitle = windowId === 'root' 
+      ? `New Tab ${nextNum}` 
+      : `${info.fullPath}.${nextNum}`;
+
     const newId = `tab-${Math.random().toString(36).substring(2, 11)}`;
-    const newTab: Tab = { id: newId, title: newTitle, content: '', createdAt: Date.now() };
-    setWindows(prev => ({ ...prev, [windowId]: { ...prev[windowId], tabs: [...prev[windowId].tabs, newTab] } }));
+    
+    const newTab: Tab = { 
+      id: newId, 
+      title: newTitle, 
+      content: '', 
+      createdAt: Date.now()
+    };
+
+    setWindows(prev => ({ 
+      ...prev, 
+      [windowId]: { 
+        ...prev[windowId], 
+        tabs: [...prev[windowId].tabs, newTab] 
+      },
+      [newId]: { 
+        id: newId, 
+        tabs: [], 
+        collapsed: false 
+      }
+    }));
   };
 
   // --- EXPORT LOGIC ---
   const toggleTabSelection = (tab: Tab, selected: boolean) => {
     const next = new Set(selectedTabIds);
-    const walk = (t: Tab) => {
-      selected ? next.add(t.id) : next.delete(t.id);
-      if (t.childWindowId && windows[t.childWindowId]) {
-        windows[t.childWindowId].tabs.forEach(walk);
+    const walk = (tId: string) => {
+      selected ? next.add(tId) : next.delete(tId);
+      // If this tab has a child window, walk those tabs too
+      if (windows[tId]) {
+        windows[tId].tabs.forEach(child => walk(child.id));
       }
     };
-    walk(tab);
+    walk(tab.id);
     setSelectedTabIds(next);
   };
 
   const handleFinalExport = () => {
     const exportList: any[] = [];
+    
+    // Recursive walker that uses the new Window ID logic
     const walk = (winId: string, depth: number, parentTitle: string = "Root") => {
       const win = windows[winId];
       if (!win) return;
+
       win.tabs.forEach(tab => {
         if (selectedTabIds.has(tab.id)) {
           exportList.push({
@@ -230,13 +271,17 @@ export default function App() {
             title: tab.title,
             content: tab.content,
             depth: depth,
-            fromParent: parentTitle, // "From" field added here
+            fromParent: parentTitle, 
             createdAt: tab.createdAt
           });
-          if (tab.childWindowId) walk(tab.childWindowId, depth + 1, tab.title);
+          // Check if this tab has its own window (children)
+          if (windows[tab.id]) {
+            walk(tab.id, depth + 1, tab.title);
+          }
         }
       });
     };
+
     walk('root', 0);
 
     let blob: Blob;
@@ -269,37 +314,25 @@ export default function App() {
         const importedData: any[] = JSON.parse(event.target?.result as string);
         if (!Array.isArray(importedData)) throw new Error("Invalid format");
 
-        const newWindows = { ...windows };
+        // Start with a clean slate or merge with 'root'
+        const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
         
-        // 1. Create a map of old IDs to new generated IDs to maintain relationships
-        const idMap: Record<string, string> = {};
+        // 1. Create a map for IDs and verify titles
+        const idMap: Record<string, string> = {}; // Old Title -> New ID
         importedData.forEach(item => {
-          idMap[item.id] = `tab-${Math.random().toString(36).substr(2, 9)}`;
+          idMap[item.title] = `tab-${Math.random().toString(36).substring(2, 11)}`;
         });
 
-        // 2. Process items and rebuild windows
-        importedData.forEach(item => {
-          const newId = idMap[item.id];
+        // 2. Sort by depth to ensure parents are created before children
+        const sortedData = [...importedData].sort((a, b) => (a.depth || 0) - (b.depth || 0));
+
+        sortedData.forEach(item => {
+          const newId = idMap[item.title];
           const parentTitle = item.fromParent;
           
-          // Determine which window this tab belongs in
-          // If fromParent is "Root", it goes to 'root', otherwise find the new ID of that parent
           let targetWinId = 'root';
-          if (parentTitle !== "Root") {
-            const parentItem = importedData.find(p => p.title === parentTitle);
-            if (parentItem) {
-              const newParentTabId = idMap[parentItem.id];
-              // We need to ensure the parent has a childWindowId assigned
-              // Find the tab in our working newWindows set
-              for (const wId in newWindows) {
-                const tab = newWindows[wId].tabs.find(t => t.id === newParentTabId);
-                if (tab) {
-                  if (!tab.childWindowId) tab.childWindowId = `win-${Math.random().toString(36).substr(2, 9)}`;
-                  targetWinId = tab.childWindowId;
-                  break;
-                }
-              }
-            }
+          if (parentTitle !== "Root" && idMap[parentTitle]) {
+            targetWinId = idMap[parentTitle];
           }
 
           const newTab: Tab = {
@@ -309,17 +342,23 @@ export default function App() {
             createdAt: item.createdAt || Date.now(),
           };
 
+          // Ensure the target window exists
           if (!newWindows[targetWinId]) {
-            newWindows[targetWinId] = { id: targetWinId, tabs: [] };
+            newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
           }
           newWindows[targetWinId].tabs.push(newTab);
+
+          // Initialize a window for the new tab in case it has children later
+          if (!newWindows[newId]) {
+            newWindows[newId] = { id: newId, tabs: [], collapsed: false };
+          }
         });
 
         setWindows(newWindows);
-        alert(`Successfully imported and reconstructed tree.`);
+        alert(`Successfully imported ${importedData.length} items.`);
       } catch (err) {
         console.error(err);
-        alert("Import failed: JSON structure is incompatible.");
+        alert("Import failed: Ensure you are using a valid JSON export file.");
       }
     };
     reader.readAsText(file);
@@ -327,60 +366,54 @@ export default function App() {
 
   // --- ACTIONS ---
   const deleteTab = async (windowId: string, tabId: string) => {
-    const tabToDelete = windows[windowId].tabs.find(t => t.id === tabId);
-    if (!tabToDelete) return;
-
-    // Added Confirmation
-    const confirmMsg = `Are you sure you want to delete "${tabToDelete.title}"? This will also delete all nested sub-items.`;
-    if (!window.confirm(confirmMsg)) return;
-
-    // 1. Keep track of all IDs we are about to delete
-    const idsToDelete: string[] = [tabId];
+    if (!window.confirm("Delete this item and all sub-items?")) return;
 
     const next = { ...windows };
-    const collectWindows = (winId: string | undefined) => {
-      if (!winId || !next[winId]) return;
-      next[winId].tabs.forEach(t => {
-        idsToDelete.push(t.id); // Collect nested tab IDs
-        collectWindows(t.childWindowId);
-      });
-      delete next[winId];
-    };
-    
-    collectWindows(tabToDelete.childWindowId);
-    next[windowId].tabs = next[windowId].tabs.filter(t => t.id !== tabId);
-    setActivePath(activePath.filter(id => id === 'root' || next[id]));
-    
-    // 2. Update UI instantly
-    setWindows(next);
+    const idsToRemove = new Set<string>();
 
-    // 3. Tell the database to physically delete them
+    // 1. RECURSIVE UI CLEANUP: Find every tab and window in this branch
+    const collectAndKill = (id: string) => {
+      idsToRemove.add(id);
+      
+      // If a window exists for this tab, it contains its children
+      if (next[id]) {
+        next[id].tabs.forEach(child => collectAndKill(child.id));
+        delete next[id]; // Kill the window object entirely
+      }
+    };
+
+    collectAndKill(tabId);
+
+    // 2. Remove the starting tab from its parent's list
+    if (next[windowId]) {
+      next[windowId].tabs = next[windowId].tabs.filter(t => t.id !== tabId);
+    }
+
+    // 3. Update State & Close Columns
+    setWindows(next);
+    setActivePath(prev => prev.filter(id => id === 'root' || next[id]));
+    if (activeTabId && idsToRemove.has(activeTabId)) setActiveTabId(null);
+
+    // 4. BACKEND CALL: The SQL handles the rest of the tree
     try {
-      setSaveStatus('saving');
-      // Sends a DELETE request for the main tab and all its children
-      await Promise.all(idsToDelete.map(id => 
-        fetch(`${API_URL}/tabs/${id}`, { method: 'DELETE' }) 
-      ));
-      setSaveStatus('saved');
-      setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      await fetch(`${API_URL}/tabs/${tabId}`, { method: 'DELETE' });
     } catch (e) {
-      console.error("Failed to delete from DB", e);
-      setSaveStatus('error');
+      console.error("Sync error", e);
     }
   };
 
-  const handleTabClick = (windowId: string, tab: Tab, depth: number) => {
+  const handleTabClick = (windowId: string, tab: Tab, index: number) => {
     setActiveTabId(tab.id);
-    if (!tab.childWindowId) {
-      const newWinId = `win-${Math.random().toString(36).substring(2, 11)}`;
-      setWindows(prev => {
-        const next = { ...prev };
-        next[windowId].tabs = next[windowId].tabs.map(t => t.id === tab.id ? { ...t, childWindowId: newWinId } : t);
-        next[newWinId] = { id: newWinId, tabs: [], collapsed: false };
-        return next;
-      });
-      setActivePath([...activePath.slice(0, depth + 1), newWinId]);
-    } else { setActivePath([...activePath.slice(0, depth + 1), tab.childWindowId]); }
+    
+    // The tab's OWN ID is the key for the window containing its children
+    if (!windows[tab.id]) {
+      setWindows(prev => ({
+        ...prev,
+        [tab.id]: { id: tab.id, tabs: [], collapsed: false }
+      }));
+    }
+
+    setActivePath([...activePath.slice(0, index + 1), tab.id]);
   };
 
   const editor = useEditor({
@@ -420,16 +453,21 @@ export default function App() {
 
   const ExportTreeNode = ({ winId, depth }: { winId: string; depth: number }) => {
     const win = windows[winId];
-    if (!win) return null;
+    if (!win || win.tabs.length === 0) return null;
     return (
       <div style={{ marginLeft: depth * 15 }}>
         {win.tabs.map(tab => (
           <div key={tab.id}>
             <label className="modal-checkbox-row">
-              <input type="checkbox" checked={selectedTabIds.has(tab.id)} onChange={(e) => toggleTabSelection(tab, e.target.checked)} />
+              <input 
+                type="checkbox" 
+                checked={selectedTabIds.has(tab.id)} 
+                onChange={(e) => toggleTabSelection(tab, e.target.checked)} 
+              />
               <span className="modal-tab-name">{tab.title}</span>
             </label>
-            {tab.childWindowId && <ExportTreeNode winId={tab.childWindowId} depth={depth + 1} />}
+            {/* If a window exists for this tab ID, it has children */}
+            {windows[tab.id] && <ExportTreeNode winId={tab.id} depth={depth + 1} />}
           </div>
         ))}
       </div>

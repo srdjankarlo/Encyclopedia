@@ -44,6 +44,10 @@ async fn main() {
     )
     .execute(&pool)
     .await;
+    
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tabs_parent_id ON tabs(parent_id);")
+    .execute(&pool)
+    .await;
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -117,21 +121,27 @@ async fn save_tab(
 // NEW: Delete Handler
 async fn delete_tab(
     State(pool): State<Pool<Postgres>>,
-    Path(id): Path<String> // Extracts the :id from the URL
+    Path(id): Path<String>
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let result = sqlx::query("DELETE FROM tabs WHERE id = $1")
-        .bind(&id)
-        .execute(&pool)
-        .await;
+    // This query finds the parent and every nested child regardless of depth
+    let sql = r#"
+        WITH RECURSIVE tab_tree AS (
+            SELECT id FROM tabs WHERE id = $1
+            UNION ALL
+            SELECT t.id FROM tabs t
+            INNER JOIN tab_tree tt ON t.parent_id = tt.id
+        )
+        DELETE FROM tabs WHERE id IN (SELECT id FROM tab_tree)
+    "#;
 
-    match result {
-        Ok(_) => {
-            println!("🗑️ Deleted tab: {}", id);
+    match sqlx::query(sql).bind(&id).execute(&pool).await {
+        Ok(res) => {
+            println!("🗑️ Database Cleaned: {} records removed", res.rows_affected());
             Ok(StatusCode::NO_CONTENT)
         },
         Err(e) => {
-            eprintln!("❌ DB Error (Delete): {:?}", e);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("DB Error: {}", e)))
+            eprintln!("❌ DB Delete Error: {:?}", e);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
 }

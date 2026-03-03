@@ -1,7 +1,18 @@
 {
-  "name": "Encyclopedia",
+  "name": "Encyclopedia Full Stack",
   "dockerComposeFile": "../docker-compose.yml",
-  "service": "ui",
-  "workspaceFolder": "/app", 
+  "service": "dev-env",
+  "workspaceFolder": "/app",
+  "forwardPorts": [5173, 8080],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  },
   "remoteUser": "root"
 }
