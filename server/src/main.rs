@@ -3,6 +3,7 @@ use axum::{
     Router, Json, extract::{State, Path}, 
     http::StatusCode
 };
+use axum::extract::DefaultBodyLimit;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres, Row};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -58,7 +59,8 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(|| async { "Backend is healthy!" }))
         .route("/tabs", get(get_tabs).post(save_tab))
-        .route("/tabs/:id", delete(delete_tab)) 
+        .route("/tabs/:id", delete(delete_tab))
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // Allows up to 10MB
         .layer(cors)
         .with_state(pool);
 
@@ -91,6 +93,9 @@ async fn save_tab(
     State(pool): State<Pool<Postgres>>, 
     Json(tab): Json<Tab>
 ) -> Result<&'static str, (StatusCode, String)> {
+    // LINE DEBUG
+    println!("📥 Received Tab: {} - Content Length: {}", tab.id, tab.content.len());
+
     let result = sqlx::query(
         "INSERT INTO tabs (id, title, content, child_window_id, parent_id, created_at) 
          VALUES ($1, $2, $3, $4, $5, $6) 

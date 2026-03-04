@@ -448,6 +448,7 @@ export default function App() {
         heading: false,
         bulletList: false, 
         orderedList: false,
+        dropcursor: true,
       }),
       Heading.configure({ levels: [1, 2, 3] }),
       BulletList,
@@ -457,7 +458,9 @@ export default function App() {
       TableRow,
       TableHeader,
       TableCell,
-      Image,
+      Image.configure({
+        allowBase64: true, // SOME versions of Tiptap require this to be explicit
+      }),
       Link.configure({ openOnClick: false }),
     ],
     content: '',
@@ -523,8 +526,19 @@ export default function App() {
       const reader = new FileReader();
       reader.onload = (event) => {
         const base64 = event.target?.result as string;
+        
+        // 1. Insert the image
         editor.chain().focus().setImage({ src: base64 }).run();
-      };
+
+        // 2. Wait a tiny bit for Tiptap to update its internal DOM
+        setTimeout(() => {
+          const html = editor.getHTML();
+          console.log("HTML to be saved:", html); // Verify <img> is in here!
+          
+          // If you have a manual save function, call it here
+          // saveToBackend(activeTabId, html); 
+        }, 100);
+        };
       reader.readAsDataURL(file);
     }
   };
