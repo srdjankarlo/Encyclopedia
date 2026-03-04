@@ -1,9 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
 import { ResizableBox } from 'react-resizable';
 import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
+import {StarterKit} from '@tiptap/starter-kit';
 // import TiptapImage from '@tiptap/extension-image';
+import {Heading} from '@tiptap/extension-heading';
+import {BulletList} from '@tiptap/extension-bullet-list';
+import {OrderedList} from '@tiptap/extension-ordered-list';
+import {ListItem} from '@tiptap/extension-list-item';
+import {Table} from '@tiptap/extension-table';
+import {TableRow} from '@tiptap/extension-table-row';
+import {TableCell} from '@tiptap/extension-table-cell';
+import {TableHeader} from '@tiptap/extension-table-header';
+import {Image} from '@tiptap/extension-image';
+import {Link} from '@tiptap/extension-link';
 import './App.css';
+import { 
+  Heading1, Heading2, Type, Bold, Italic, Strikethrough, 
+  List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
+  Columns, Rows, Trash2, Plus
+} from 'lucide-react';
 
 const API_URL = "http://localhost:8080";
 
@@ -427,15 +442,33 @@ export default function App() {
   };
 
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [
+      StarterKit.configure({
+        // We configure these separately for more control
+        heading: false,
+        bulletList: false, 
+        orderedList: false,
+      }),
+      Heading.configure({ levels: [1, 2, 3] }),
+      BulletList,
+      OrderedList,
+      ListItem,
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      Image,
+      Link.configure({ openOnClick: false }),
+    ],
     content: '',
     onUpdate: ({ editor }) => {
       if (!activeTabId) return;
+      const html = editor.getHTML();
       setWindows(prev => {
         const next = { ...prev };
         for (const winId in next) {
           const tab = next[winId].tabs.find(t => t.id === activeTabId);
-          if (tab) { tab.content = editor.getHTML(); break; }
+          if (tab) { tab.content = html; break; }
         }
         return next;
       });
@@ -482,6 +515,18 @@ export default function App() {
         ))}
       </div>
     );
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && editor) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        editor.chain().focus().setImage({ src: base64 }).run();
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   return (
@@ -621,8 +666,66 @@ export default function App() {
             <div className="editor-wrapper">
               <div className="editor-toolbar">
                 <div className="tools">
-                  <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''}>B</button>
-                  <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''}>I</button>
+                  {/* Text Style Group */}
+                  <div className="tool-group">
+                    {/* Text Styles */}
+                    <button onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={editor.isActive('heading', { level: 1 }) ? 'is-active' : ''} title="Heading 1"><Heading1 size={18} /></button>
+                    <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={editor.isActive('heading', { level: 2 }) ? 'is-active' : ''} title="Heading 2"><Heading2 size={18} /></button>
+                    <button onClick={() => editor.chain().focus().setParagraph().run()} className={editor.isActive('paragraph') ? 'is-active' : ''} title="Paragraph"><Type size={18} /></button>
+                    
+                    <div className="tool-separator" />
+
+                    {/* Formatting */}
+                    <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''} title="Bold"><Bold size={18} /></button>
+                    <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''} title="Italic"><Italic size={18} /></button>
+                    <button onClick={() => editor.chain().focus().toggleStrike().run()} className={editor.isActive('strike') ? 'is-active' : ''} title="Strike"><Strikethrough size={18} /></button>
+
+                    <div className="tool-separator" />
+
+                    {/* Lists */}
+                    <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={editor.isActive('bulletList') ? 'is-active' : ''} title="Bullet List"><List size={18} /></button>
+                    <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={editor.isActive('orderedList') ? 'is-active' : ''} title="Numbered List"><ListOrdered size={18} /></button>
+
+                    <div className="tool-separator" />
+
+                    {/* Media & Tables */}
+                    <button onClick={() => document.getElementById('image-upload')?.click()} title="Upload Image"><ImageIcon size={18} /></button>
+                    <input 
+                      id="image-upload" 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleImageUpload} 
+                      style={{ display: 'none' }} 
+                    />
+                    
+                    <button onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table"><TableIcon size={18} /></button>
+
+                    {/* Contextual Table Controls */}
+                    {editor.isActive('table') && (
+                      <>
+                        <div className="tool-separator" />
+                        <button 
+                          onClick={() => editor.chain().focus().addColumnAfter().run()} 
+                          title="Add Column"
+                        >
+                          <Columns size={18} />
+                        </button>
+                        <button 
+                          onClick={() => editor.chain().focus().addRowAfter().run()} 
+                          title="Add Row"
+                        >
+                          <Rows size={18} />
+                        </button>
+                        <button 
+                          onClick={() => editor.chain().focus().deleteTable().run()} 
+                          style={{color: '#ff4d4d'}} 
+                          title="Delete Table"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
                 {/* SYNC INDICATOR */}
                 <div className="sync-indicator-container">

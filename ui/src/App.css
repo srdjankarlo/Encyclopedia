@@ -209,10 +209,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); borde
 
 .editor-toolbar {
   padding: 10px 40px; background-color: var(--bg-sidebar); border-bottom: 1px solid var(--border-color);
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; display: flex; flex-wrap: wrap; position: sticky; top: 0; z-index: 10;
 }
 
-/* Toolbar B & I Buttons */
+/* Toolbar */
 .tools button {
   width: 32px; height: 32px; padding: 0; font-family: serif; font-size: 16px; font-weight: bold;
   background-color: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--btn-border);
@@ -225,6 +225,72 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); borde
 }
 
 .rich-editor { flex-grow: 1; padding: 40px 60px; overflow-y: auto; background-color: var(--bg-main); }
+.rich-editor table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #ddd;
+}
+.rich-editor td, .rich-editor th {
+  min-width: 1em;
+  border: 1px solid #ddd;
+  padding: 3px 5px;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+}
+.rich-editor th {
+  font-weight: bold;
+  text-align: left;
+  background-color: #f4f4f4;
+}
+.dark-theme .rich-editor th, .dark-theme .rich-editor td {
+  background-color: #333;
+  border-color: #444;
+}
+/* Ensure images don't overflow the editor */
+.rich-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 10px 0;
+}
+.tool-separator {
+  width: 1px;
+  height: 20px;
+  background: #ccc;
+  margin: 0 8px;
+}
+.tool-group {
+  display: flex;
+  gap: 4px;
+}
+.tool-group button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #444;
+  transition: all 0.2s;
+}
+.tool-group button:hover {
+  background: #f0f0f0;
+  border-color: #ddd;
+}
+.tool-group button.is-active {
+  background: #e2e8f0;
+  color: #2563eb;
+  border-color: #cbd5e1;
+}
 .ProseMirror { line-height: 1.6; font-size: 16px; outline: none; }
 .ProseMirror p { margin-bottom: 1em; }
 .empty-state { margin: auto; color: var(--text-muted); font-style: italic; }
