@@ -403,17 +403,27 @@ export default function App() {
   };
 
   const handleTabClick = (windowId: string, tab: Tab, index: number) => {
+    // 1. Set the active tab highlight
     setActiveTabId(tab.id);
-    
-    // The tab's OWN ID is the key for the window containing its children
-    if (!windows[tab.id]) {
-      setWindows(prev => ({
-        ...prev,
-        [tab.id]: { id: tab.id, tabs: [], collapsed: false }
-      }));
-    }
 
-    setActivePath([...activePath.slice(0, index + 1), tab.id]);
+    // 2. Determine if we are clicking a tab that is already open at the end of the path
+    const isAlreadyOpen = activePath[index + 1] === tab.id;
+
+    if (isAlreadyOpen) {
+      // CLOSE: If it's already open, truncate the path to this level
+      setActivePath(activePath.slice(0, index + 1));
+      if (activeTabId === tab.id) setActiveTabId(null);
+    } else {
+      // OPEN: If it's not open, create the window if it doesn't exist and update path
+      if (!windows[tab.id]) {
+        setWindows(prev => ({
+          ...prev,
+          [tab.id]: { id: tab.id, tabs: [], collapsed: false }
+        }));
+      }
+      // Update path to include this new tab's window
+      setActivePath([...activePath.slice(0, index + 1), tab.id]);
+    }
   };
 
   const editor = useEditor({
