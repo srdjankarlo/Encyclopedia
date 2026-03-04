@@ -15,7 +15,7 @@ import {Image} from '@tiptap/extension-image';
 import {Link} from '@tiptap/extension-link';
 import './App.css';
 import { 
-  Heading1, Heading2, Type, Bold, Italic, Strikethrough, 
+  Heading1, Heading2, Heading3, Type, Bold, Italic, Strikethrough, 
   List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
   Columns, Rows, Trash2, Plus
 } from 'lucide-react';
@@ -477,6 +477,25 @@ export default function App() {
       });
     },
   });
+  if (!editor) {
+    return null;
+  }
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!editor) return;
+
+    const updateHandler = () => {
+      setTick(tick => tick + 1); // This forces React to look at editor.isActive() again
+    };
+
+    editor.on('selectionUpdate', updateHandler);
+    editor.on('transaction', updateHandler);
+
+    return () => {
+      editor.off('selectionUpdate', updateHandler);
+      editor.off('transaction', updateHandler);
+    };
+  }, [editor]);
 
   useEffect(() => {
     if (editor && activeTabId) {
@@ -683,9 +702,37 @@ export default function App() {
                   {/* Text Style Group */}
                   <div className="tool-group">
                     {/* Text Styles */}
-                    <button onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={editor.isActive('heading', { level: 1 }) ? 'is-active' : ''} title="Heading 1"><Heading1 size={18} /></button>
-                    <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={editor.isActive('heading', { level: 2 }) ? 'is-active' : ''} title="Heading 2"><Heading2 size={18} /></button>
-                    <button onClick={() => editor.chain().focus().setParagraph().run()} className={editor.isActive('paragraph') ? 'is-active' : ''} title="Paragraph"><Type size={18} /></button>
+                    <button 
+                      onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} 
+                      className={editor.isActive('heading', { level: 1 }) ? 'is-active' : ''}
+                      title="Heading 1"
+                    >
+                      <Heading1 size={18} />
+                    </button>
+                    
+                    <button 
+                      onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} 
+                      className={editor.isActive('heading', { level: 2 }) ? 'is-active' : ''}
+                      title="Heading 2"
+                    >
+                      <Heading2 size={18} />
+                    </button>
+
+                    <button 
+                      onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} 
+                      className={editor.isActive('heading', { level: 3 }) ? 'is-active' : ''}
+                      title="Heading 3"
+                    >
+                      <Heading3 size={18} />
+                    </button>
+
+                    <button 
+                      onClick={() => editor.chain().focus().setParagraph().run()} 
+                      className={editor.isActive('paragraph') ? 'is-active' : ''}
+                      title="Paragraph"
+                    >
+                      <Type size={18} />
+                    </button>
                     
                     <div className="tool-separator" />
 
