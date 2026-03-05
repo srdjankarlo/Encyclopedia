@@ -17,8 +17,10 @@ import './App.css';
 import { 
   Heading1, Heading2, Heading3, Type, Bold, Italic, Strikethrough, 
   List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
-  Columns, Rows, Trash2, Plus
+  Columns, Rows, Trash2, Plus,
+  Link as LinkIcon
 } from 'lucide-react';
+import { Mark, mergeAttributes } from '@tiptap/core';
 
 const API_URL = "http://localhost:8080";
 
@@ -38,6 +40,28 @@ interface WindowData {
 
 type SortMode = 'oldest' | 'alpha' | 'alpha-desc' | 'newest';
 
+export const WikiLink = Mark.create({
+  name: 'wikiLink',
+
+  addAttributes() {
+    return {
+      tabId: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-tab-id'),
+        renderHTML: attributes => ({ 'data-tab-id': attributes.tabId }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'span[data-tab-id]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['span', mergeAttributes(HTMLAttributes, { class: 'wiki-link' }), 0];
+  },
+});
+
 export default function App() {
   const [windows, setWindows] = useState<Record<string, WindowData>>({ 'root': { id: 'root', tabs: [] } });
   const [activePath, setActivePath] = useState<string[]>(['root']);
@@ -49,6 +73,10 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [linkSearch, setLinkSearch] = useState<{ active: boolean; query: string }>({ 
+    active: false, 
+    query: '' 
+  });
 
   // Export State
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -461,9 +489,37 @@ export default function App() {
       Image.configure({
         allowBase64: true, // SOME versions of Tiptap require this to be explicit
       }),
-      Link.configure({ openOnClick: false }),
+      Link.configure({ 
+        openOnClick: false, 
+        autolink: false, // Prevents random text from becoming links
+        HTMLAttributes: {
+          class: 'wiki-link',
+          target: null, // Ensure target="_blank" is NOT added
+          rel: null,
+        },
+       }),
+       WikiLink,
     ],
     content: '',
+    editorProps: {
+      handleDOMEvents: {
+        click: (view, event) => {
+          const target = event.target as HTMLElement;
+          const wikiSpan = target.closest('.wiki-link');
+
+          if (wikiSpan) {
+            event.preventDefault();
+            event.stopPropagation();
+            const tabId = wikiSpan.getAttribute('data-tab-id');
+            if (tabId) {
+              handleInternalNavigation(tabId);
+            }
+            return true;
+          }
+          return false;
+        },
+      },
+    },
     onUpdate: ({ editor }) => {
       if (!activeTabId) return;
       const html = editor.getHTML();
@@ -496,6 +552,77 @@ export default function App() {
       editor.off('transaction', updateHandler);
     };
   }, [editor]);
+
+  const handleInternalNavigation = (tabId: string) => {
+    // 1. Find the element in the DOM
+    const element = document.getElementById(`tab-${tabId}`);
+    
+    if (element) {
+      // 2. Scroll to it
+      element.scrollIntoView({ 
+        behavior: 'smooth', 
+        inline: 'center', 
+        block: 'nearest' 
+      });
+
+      // 3. Highlight it briefly
+      setActiveTabId(tabId);
+      element.classList.add('teleport-flash');
+      setTimeout(() => element.classList.remove('teleport-flash'), 1000);
+    } else {
+      // If it's not in the DOM, it might be in a window that isn't open yet.
+      // For now, let's at least try to set it as active
+      setActiveTabId(tabId);
+    }
+  };
+
+  const addInternalLink = () => {
+    if (!editor) return;
+    
+    // If text is selected, show our search UI
+    if (!editor.state.selection.empty) {
+      setLinkSearch({ active: true, query: '' });
+    } else {
+      alert("Please highlight some text first to create a link!");
+    }
+  };
+
+  useEffect(() => {
+    const handleWikiClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const anchor = target.closest('a');
+
+      // Only intercept if it's one of our internal wiki links
+      if (anchor && anchor.getAttribute('href')?.startsWith('#')) {
+        event.preventDefault(); // STOP the browser from opening a new tab/refreshing
+        event.stopPropagation();
+
+        const tabId = anchor.getAttribute('href')?.substring(1);
+        
+        if (tabId) {
+          // 1. Find which window this tab belongs to
+          const targetWindowId = Object.keys(windows).find(winId => 
+            windows[winId].tabs.some(t => t.id === tabId)
+          );
+
+          if (targetWindowId) {
+            console.log("Found tab in window:", targetWindowId);
+            
+            // 2. Logic to navigate: 
+            // You likely need to set the active window or scroll to it
+            // Example: setActiveTabId(tabId); 
+            
+            // If you have a ref for the Miller Column container:
+            const element = document.getElementById(`tab-${tabId}`);
+            element?.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+          }
+        }
+      }
+    };
+
+    document.addEventListener('click', handleWikiClick);
+    return () => document.removeEventListener('click', handleWikiClick);
+  }, [windows]); // Re-run when windows change so we have the latest IDs
 
   useEffect(() => {
     if (editor && activeTabId) {
@@ -760,6 +887,13 @@ export default function App() {
                     />
                     
                     <button onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table"><TableIcon size={18} /></button>
+                    <button 
+                      onClick={addInternalLink}
+                      className={editor.isActive('link') ? 'is-active' : ''}
+                      title="Add Wiki Link"
+                    >
+                      <LinkIcon size={18} />
+                    </button>
 
                     {/* Contextual Table Controls */}
                     {editor.isActive('table') && (
@@ -785,6 +919,36 @@ export default function App() {
                           <Trash2 size={18} />
                         </button>
                       </>
+                    )}
+                    {linkSearch.active && (
+                      <div className="wiki-link-search">
+                        <input 
+                          autoFocus
+                          placeholder="Search tabs..."
+                          value={linkSearch.query}
+                          onChange={(e) => setLinkSearch({ ...linkSearch, query: e.target.value })}
+                          onKeyDown={(e) => e.key === 'Escape' && setLinkSearch({ active: false, query: '' })}
+                        />
+                        <div className="search-results">
+                          {Object.values(windows)
+                            .flatMap(w => w.tabs)
+                            .filter(t => t.title.toLowerCase().includes(linkSearch.query.toLowerCase()))
+                            .slice(0, 5)
+                            .map(t => ( // 't' is the tab from the list
+                              <div 
+                                key={t.id} 
+                                className="search-item"
+                                onClick={() => {
+                                  // Now we use 't.id' correctly
+                                  editor.chain().focus().extendMarkRange('wikiLink').setMark('wikiLink', { tabId: t.id }).run();
+                                  setLinkSearch({ active: false, query: '' });
+                                }}
+                              >
+                                {t.title}
+                              </div>
+                            ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>

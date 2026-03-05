@@ -359,3 +359,60 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); borde
 .confirm-btn:hover { filter: brightness(1.1); color: white;}
 .cancel-btn { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 4px; }
 .cancel-btn:hover { color: var(--text-main); border-color: var(--text-muted); }
+
+/* =========================
+WIKI LINKS
+========================= */
+.wiki-link {
+  color: #2563eb;
+  text-decoration: none;
+  border-bottom: 1px dashed #2563eb;
+  padding: 0 2px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.wiki-link:hover {
+  background: rgba(37, 99, 235, 0.1);
+  border-bottom-style: solid;
+}
+/* Optional: Add a small icon before internal links */
+.wiki-link::before {
+  content: "🔗";
+  font-size: 0.8em;
+  margin-right: 4px;
+}
+.wiki-link-search {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  padding: 8px;
+  z-index: 100;
+  width: 250px;
+}
+.wiki-link-search input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  outline: none;
+}
+.search-results {
+  margin-top: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.search-item {
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+}
+.search-item:hover {
+  background: #f1f5f9;
+  color: #2563eb;
+}
