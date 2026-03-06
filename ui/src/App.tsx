@@ -42,7 +42,6 @@ type SortMode = 'oldest' | 'alpha' | 'alpha-desc' | 'newest';
 
 export const WikiLink = Mark.create({
   name: 'wikiLink',
-
   addAttributes() {
     return {
       tabId: {
@@ -52,12 +51,12 @@ export const WikiLink = Mark.create({
       },
     };
   },
-
-  parseHTML() {
-    return [{ tag: 'span[data-tab-id]' }];
-  },
+  parseHTML() { return [{ tag: 'span[data-tab-id]' }]; },
 
   renderHTML({ HTMLAttributes }) {
+    // We can't access 'windows' state inside the extension easily, 
+    // so we handle the 'broken' styling via a global CSS class 
+    // and a small useEffect that checks validity.
     return ['span', mergeAttributes(HTMLAttributes, { class: 'wiki-link' }), 0];
   },
 });
@@ -508,12 +507,18 @@ export default function App() {
           const wikiSpan = target.closest('.wiki-link');
 
           if (wikiSpan) {
-            event.preventDefault();
-            event.stopPropagation();
             const tabId = wikiSpan.getAttribute('data-tab-id');
-            if (tabId) {
-              handleInternalNavigation(tabId);
+            
+            // Check if tab exists in any window
+            const tabExists = Object.values(windows).some(w => w.tabs.some(t => t.id === tabId));
+
+            if (!tabExists) {
+              wikiSpan.setAttribute('data-broken', 'true');
+              alert("This tab has been deleted and the link is broken.");
+              return true;
             }
+
+            handleInternalNavigation(tabId!);
             return true;
           }
           return false;
@@ -553,33 +558,78 @@ export default function App() {
     };
   }, [editor]);
 
-  const handleInternalNavigation = (tabId: string) => {
-    // 1. Find the element in the DOM
-    const element = document.getElementById(`tab-${tabId}`);
+  useEffect(() => {
+    if (!editor) return;
     
-    if (element) {
-      // 2. Scroll to it
-      element.scrollIntoView({ 
-        behavior: 'smooth', 
-        inline: 'center', 
-        block: 'nearest' 
-      });
+    // Get all tab IDs currently in the system
+    const existingIds = new Set(Object.values(windows).flatMap(w => w.tabs.map(t => t.id)));
+    
+    // Find all wiki-link spans in the DOM and toggle the broken class
+    const links = document.querySelectorAll('.wiki-link');
+    links.forEach(link => {
+      const id = link.getAttribute('data-tab-id');
+      if (id && !existingIds.has(id)) {
+        link.classList.add('is-broken');
+      } else {
+        link.classList.remove('is-broken');
+      }
+    });
+  }, [editor?.getHTML(), windows]); // Re-run when content or tabs change
 
-      // 3. Highlight it briefly
-      setActiveTabId(tabId);
-      element.classList.add('teleport-flash');
-      setTimeout(() => element.classList.remove('teleport-flash'), 1000);
-    } else {
-      // If it's not in the DOM, it might be in a window that isn't open yet.
-      // For now, let's at least try to set it as active
-      setActiveTabId(tabId);
+  const handleInternalNavigation = (tabId: string) => {
+    // Helper: Find which window/tab "owns" a specific child tab
+    const getParentOfTab = (targetId: string): string | null => {
+      for (const winId in windows) {
+        if (windows[winId].tabs.some(t => t.id === targetId)) {
+          return winId;
+        }
+      }
+      return null;
+    };
+
+    const pathSteps: string[] = [];
+    let currentId: string | null = tabId;
+
+    // 1. Trace backwards from the target tab to 'root'
+    while (currentId && currentId !== 'root') {
+      const parentId = getParentOfTab(currentId);
+      if (parentId) {
+        pathSteps.unshift(parentId); // Add parent to the start of the path
+        currentId = parentId;
+      } else {
+        currentId = null;
+      }
     }
+
+    // 2. Ensure the path starts with root
+    const finalPath = pathSteps.length > 0 ? pathSteps : ['root'];
+
+    // 3. Update the UI state
+    setActivePath(finalPath);
+    setActiveTabId(tabId);
+
+    // 4. Scroll the new column into view
+    setTimeout(() => {
+      const element = document.getElementById(`tab-${tabId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+        element.classList.add('teleport-flash');
+        // Clean up the flash animation after it plays
+        setTimeout(() => element.classList.remove('teleport-flash'), 1500);
+      }
+    }, 200); // 200ms gives React enough time to render the new columns
   };
 
   const addInternalLink = () => {
     if (!editor) return;
     
-    // If text is selected, show our search UI
+    // If the search UI is already open, CLOSE it.
+    if (linkSearch.active) {
+      setLinkSearch({ active: false, query: '' });
+      return;
+    }
+
+    // If text is selected, show the search UI.
     if (!editor.state.selection.empty) {
       setLinkSearch({ active: true, query: '' });
     } else {
@@ -623,6 +673,37 @@ export default function App() {
     document.addEventListener('click', handleWikiClick);
     return () => document.removeEventListener('click', handleWikiClick);
   }, [windows]); // Re-run when windows change so we have the latest IDs
+
+  useEffect(() => {
+    const scanLinks = () => {
+      // 1. Map all existing tab IDs into a Set for fast lookup
+      const existingIds = new Set(Object.values(windows).flatMap(w => w.tabs.map(t => t.id)));
+      
+      // 2. Find every wiki-link in the current editor DOM
+      const links = document.querySelectorAll('.wiki-link');
+      
+      links.forEach(link => {
+        const id = link.getAttribute('data-tab-id');
+        // If the ID isn't in our 'existingIds' set, it's broken
+        if (id && !existingIds.has(id)) {
+          link.classList.add('is-broken');
+          link.setAttribute('data-broken', 'true');
+        } else {
+          link.classList.remove('is-broken');
+          link.removeAttribute('data-broken');
+        }
+      });
+    };
+
+    // Run immediately when windows change or a new tab is selected
+    scanLinks();
+
+    // Short delay to allow Tiptap to finish its internal DOM rendering
+    const timeout = setTimeout(scanLinks, 100);
+    return () => clearTimeout(timeout);
+
+  }, [windows, activeTabId, editor?.getHTML()]);
+  // Adding windows and activeTabId ensures it fires when you delete something!
 
   useEffect(() => {
     if (editor && activeTabId) {

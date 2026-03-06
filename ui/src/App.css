@@ -46,8 +46,69 @@ body.dark-theme {
   overflow: hidden; 
 }
 
-.miller-columns { display: flex; height: 100%; overflow-x: auto; }
+.miller-columns { display: flex; height: 100%; overflow-x: auto; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-bg);}
+.dark-theme .miller-columns {
+  --scrollbar-thumb: #4b5563;
+  --scrollbar-bg: #111827;
+}
+.miller-columns::-webkit-scrollbar-track, 
+.search-results::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.miller-columns::-webkit-scrollbar-thumb, 
+.search-results::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 10px;
+}
+
+.dark-theme .miller-columns::-webkit-scrollbar-thumb, 
+.dark-theme .search-results::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+}
 .react-resizable { position: relative; }
+
+/* =========================
+   THEME-AWARE SCROLLBARS
+========================= */
+/* For Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cccccc transparent;
+}
+
+.dark-theme * {
+  scrollbar-color: #4b5563 transparent;
+}
+
+/* For Chrome, Edge, and Safari */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1; /* Light grey for Light Mode */
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.dark-theme ::-webkit-scrollbar-thumb {
+  background-color: #4b5563; /* Dark grey for Dark Mode */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+.dark-theme ::-webkit-scrollbar-thumb:hover {
+  background-color: #6b7280;
+}
 
 /* =========================
    COLUMNS & TABS
@@ -111,8 +172,13 @@ body.dark-theme {
 
 .tab-row.active { 
   background: var(--hover-color); 
+  background-color: var(--active-tab-bg, #e0e7ff);
   color: var(--accent-color); 
   border-right: 3px solid var(--accent-color); 
+}
+.dark-theme .tab-row.active {
+  background-color: var(--active-tab-bg, #1e3a8a);
+  color: white;
 }
 
 .tab-row.branch-active:not(.active) {
@@ -363,9 +429,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); borde
 /* =========================
 WIKI LINKS
 ========================= */
+/* Normal Wiki Link */
 .wiki-link {
   color: #2563eb;
-  text-decoration: none;
+  text-decoration: underline;
   border-bottom: 1px dashed #2563eb;
   padding: 0 2px;
   cursor: pointer;
@@ -380,6 +447,23 @@ WIKI LINKS
   content: "🔗";
   font-size: 0.8em;
   margin-right: 4px;
+  background-color: var(--btn-bg);
+  color: var(--btn-text);
+}
+/* Broken Link - We can target this if the ID isn't found */
+.wiki-link[data-broken="true"] {
+  color: #ef4444;
+  text-decoration: line-through;
+  cursor: help;
+}
+.wiki-link[data-broken="true"]::after {
+  content: " (broken)";
+  font-size: 0.7em;
+}
+.wiki-link.is-broken {
+  color: #ef4444 !important;
+  text-decoration: line-through !important;
+  opacity: 0.7;
 }
 .wiki-link-search {
   position: absolute;
@@ -393,6 +477,8 @@ WIKI LINKS
   padding: 8px;
   z-index: 100;
   width: 250px;
+  background-color: var(--btn-bg);
+  color: var(--btn-text);
 }
 .wiki-link-search input {
   width: 100%;
@@ -400,17 +486,23 @@ WIKI LINKS
   border: 1px solid #e2e8f0;
   border-radius: 4px;
   outline: none;
+  background-color: var(--btn-bg);
+  color: var(--btn-text);
 }
 .search-results {
   margin-top: 4px;
   max-height: 150px;
   overflow-y: auto;
+  background-color: var(--btn-bg);
+  color: var(--btn-text);
 }
 .search-item {
   padding: 8px;
   cursor: pointer;
   border-radius: 4px;
   font-size: 14px;
+  background-color: var(--btn-bg);
+  color: var(--btn-text);
 }
 .search-item:hover {
   background: #f1f5f9;
