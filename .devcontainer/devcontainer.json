@@ -3,16 +3,18 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "dev-env",
   "workspaceFolder": "/app",
-  "forwardPorts": [5173, 8080],
+  "forwardPorts": [5173, 8080, 5432],
+  "postCreateCommand": "cd ui && npm install && cd ../server && cargo build",
   "customizations": {
     "vscode": {
       "extensions": [
         "rust-lang.rust-analyzer",
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
-        "tamasfe.even-better-toml"
+        "tamasfe.even-better-toml",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg"
       ]
     }
-  },
-  "remoteUser": "root"
+  }
 }

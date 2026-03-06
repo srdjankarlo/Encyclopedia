@@ -49,19 +49,16 @@ services:
         condition: service_healthy
 
   db:
-    image: postgres:15-alpine
-    container_name: encyclopedia-db
+    image: postgres:15
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=pass
       - POSTGRES_DB=miller_db
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d miller_db"]
-      interval: 3s
-      timeout: 3s
-      retries: 5
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
 volumes:
   postgres_data:

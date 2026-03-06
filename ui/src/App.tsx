@@ -20,7 +20,7 @@ import ExportModal from './components/ExportModal';
 import EditorToolbar from './components/EditorToolbar';
 import './App.css';
 
-const API_URL = "http://localhost:8080";
+const API_URL = "/api";
 
 export default function App() {
   // --- CORE STATE ---
