@@ -1,161 +1,82 @@
+// src/App.tsx
 import { useState, useEffect, useRef } from 'react';
 import { ResizableBox } from 'react-resizable';
 import { useEditor, EditorContent } from '@tiptap/react';
-import {StarterKit} from '@tiptap/starter-kit';
-// import TiptapImage from '@tiptap/extension-image';
-import {Heading} from '@tiptap/extension-heading';
-import {BulletList} from '@tiptap/extension-bullet-list';
-import {OrderedList} from '@tiptap/extension-ordered-list';
-import {ListItem} from '@tiptap/extension-list-item';
-import {Table} from '@tiptap/extension-table';
-import {TableRow} from '@tiptap/extension-table-row';
-import {TableCell} from '@tiptap/extension-table-cell';
-import {TableHeader} from '@tiptap/extension-table-header';
-import {Image} from '@tiptap/extension-image';
-import {Link} from '@tiptap/extension-link';
+import { StarterKit } from '@tiptap/starter-kit';
+import { Heading } from '@tiptap/extension-heading';
+import { BulletList } from '@tiptap/extension-bullet-list';
+import { OrderedList } from '@tiptap/extension-ordered-list';
+import { ListItem } from '@tiptap/extension-list-item';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableCell } from '@tiptap/extension-table-cell';
+import { TableHeader } from '@tiptap/extension-table-header';
+import { Image } from '@tiptap/extension-image';
+import { Link } from '@tiptap/extension-link';
+
+import type { Tab, WindowData, SortMode, SaveStatus } from './types';
+import { WikiLink } from './extensions/WikiLink';
+import ExportModal from './components/ExportModal';
+import EditorToolbar from './components/EditorToolbar';
 import './App.css';
-import { 
-  Heading1, Heading2, Heading3, Type, Bold, Italic, Strikethrough, 
-  List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
-  Columns, Rows, Trash2, Plus,
-  Link as LinkIcon
-} from 'lucide-react';
-import { Mark, mergeAttributes } from '@tiptap/core';
 
 const API_URL = "http://localhost:8080";
 
-interface Tab {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: number;
-  parentId?: string; // Added for DB structural clarity
-}
-
-interface WindowData {
-  id: string;
-  tabs: Tab[];
-  collapsed?: boolean;
-}
-
-type SortMode = 'oldest' | 'alpha' | 'alpha-desc' | 'newest';
-
-export const WikiLink = Mark.create({
-  name: 'wikiLink',
-  addAttributes() {
-    return {
-      tabId: {
-        default: null,
-        parseHTML: element => element.getAttribute('data-tab-id'),
-        renderHTML: attributes => ({ 'data-tab-id': attributes.tabId }),
-      },
-    };
-  },
-  parseHTML() { return [{ tag: 'span[data-tab-id]' }]; },
-
-  renderHTML({ HTMLAttributes }) {
-    // We can't access 'windows' state inside the extension easily, 
-    // so we handle the 'broken' styling via a global CSS class 
-    // and a small useEffect that checks validity.
-    return ['span', mergeAttributes(HTMLAttributes, { class: 'wiki-link' }), 0];
-  },
-});
-
 export default function App() {
+  // --- CORE STATE ---
   const [windows, setWindows] = useState<Record<string, WindowData>>({ 'root': { id: 'root', tabs: [] } });
   const [activePath, setActivePath] = useState<string[]>(['root']);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  
+  // --- UI STATE ---
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
   const [globalSortMode, setGlobalSortMode] = useState<SortMode>('oldest');
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('theme') === 'dark');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  
+  // --- SYNC STATE ---
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  
   const isInitialMount = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
-  const [lastSaved, setLastSaved] = useState<string | null>(null);
-  const [linkSearch, setLinkSearch] = useState<{ active: boolean; query: string }>({ 
-    active: false, 
-    query: '' 
-  });
 
-  // Export State
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(new Set());
-  const [exportFileName, setExportFileName] = useState('My_Encyclopedia');
-  const [exportFormat, setExportFormat] = useState<'txt' | 'json'>('txt');
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    // Check if the user has a preference saved in local storage
-    return localStorage.getItem('theme') === 'dark';
-  });
-
+  // --- 1. THEME EFFECT ---
   useEffect(() => {
-    if (isDarkMode) {
-      document.body.classList.add('dark-theme');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.body.classList.remove('dark-theme');
-      localStorage.setItem('theme', 'light');
-    }
+    document.body.classList.toggle('dark-theme', isDarkMode);
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // --- SYNC LOGIC (Update this section) ---
+  // --- 2. DB LOAD EFFECT ---
   useEffect(() => {
     const loadFromDb = async () => {
       try {
         const res = await fetch(`${API_URL}/tabs`);
         const dbTabs: any[] = await res.json();
-
-        if (!dbTabs || dbTabs.length === 0) {
-          setWindows({ 'root': { id: 'root', tabs: [] } });
-          return;
-        }
+        if (!dbTabs || dbTabs.length === 0) return;
 
         const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
-
-        // First pass: Create windows for any tab that acts as a parent
-        dbTabs.forEach(t => {
-          if (t.id) { // Every tab potentially has a child window
-            newWindows[t.id] = { id: t.id, tabs: [], collapsed: false };
-          }
-        });
-
-        // Second pass: Put tabs into their parents' windows
+        dbTabs.forEach(t => { if (t.id) newWindows[t.id] = { id: t.id, tabs: [], collapsed: false }; });
+        
         dbTabs.forEach(t => {
           const targetWinId = t.parent_id || 'root';
-          if (!newWindows[targetWinId]) {
-            newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
-          }
-
+          if (!newWindows[targetWinId]) newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
           newWindows[targetWinId].tabs.push({
-            id: t.id,
-            title: t.title,
-            content: t.content,
-            createdAt: Number(t.created_at),
-            parentId: t.parent_id // Keep track of parent
+            id: t.id, title: t.title, content: t.content, 
+            createdAt: Number(t.created_at), parentId: t.parent_id
           });
         });
-
         setWindows(newWindows);
-      } catch (e) {
-        console.error("❌ DB Load failed", e);
-      }
+      } catch (e) { console.error("❌ DB Load failed", e); }
     };
     loadFromDb();
   }, []);
 
-  const handleManualRetry = () => {
-    setSaveStatus('saving');
-    // This triggers the useEffect dependency [windows] by creating a shallow copy
-    // or you can extract the save logic into a named function to call here.
-    setWindows(prev => ({ ...prev })); 
-  };
-
-  // --- UPDATED SYNC LOGIC ---
+  // --- 3. AUTO-SAVE EFFECT ---
   useEffect(() => {
     if (isInitialMount.current) { isInitialMount.current = false; return; }
-    
-    // Set to saving as soon as changes are detected
     setSaveStatus('saving');
-
     const timer = setTimeout(async () => {
       try {
         const promises = Object.entries(windows).flatMap(([winId, win]) => 
@@ -164,340 +85,74 @@ export default function App() {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ 
-                id: tab.id, 
-                title: tab.title, 
-                content: tab.content, 
-                // CHANGE: if winId is 'root', parent_id is null. Otherwise, it's the winId.
+                id: tab.id, title: tab.title, content: tab.content, 
                 parent_id: winId === 'root' ? null : winId, 
-                child_window_id: tab.id, // The tab's ID is the window it opens
-                created_at: tab.createdAt 
+                child_window_id: tab.id, created_at: tab.createdAt 
               }),
             })
           )
         );
-
         await Promise.all(promises);
         setSaveStatus('saved');
         setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-      } catch (e) {
-        console.error("Save failed", e);
-        setSaveStatus('error');
-      }
+      } catch (e) { setSaveStatus('error'); }
     }, 1000);
-
     return () => clearTimeout(timer);
   }, [windows]);
 
-  // --- NEW: COLLAPSE/EXPAND ALL ---
-  const toggleAllWindows = () => {
+  const collapseAllWindows = () => {
     setWindows(prev => {
-      // Check if there are any windows (besides root) that are currently expanded
-      const anyExpanded = Object.entries(prev).some(([id, win]) => id !== 'root' && !win.collapsed);
-      
       const next = { ...prev };
       Object.keys(next).forEach(id => {
+        // We usually keep the root open, but collapse everything else
         if (id !== 'root') {
-          // If any were expanded, collapse them all. Otherwise, expand them all.
-          next[id] = { ...next[id], collapsed: anyExpanded };
+          next[id] = { ...next[id], collapsed: true };
         }
       });
       return next;
     });
   };
 
-  // --- NEW: STATS CALCULATOR ---
-  const getEditorStats = () => {
-    if (!editor) return { chars: 0, words: 0, lines: 0 };
-    const text = editor.getText();
-    const lines = text.split(/\r\n|\r|\n/).length;
-    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-    const chars = text.length;
-    return { chars, words, lines };
-  };
-
-  // --- HELPERS ---
-  const findParentInfo = (currentWinId: string) => {
-    if (currentWinId === 'root') return { title: "LIBRARY", fullPath: "New Tab" };
-
-    // In the new system, currentWinId IS the parent's tab ID
-    for (const winId in windows) {
-      const parentTab = windows[winId].tabs.find(t => t.id === currentWinId);
-      if (parentTab) {
-        return { 
-          title: parentTab.title.toUpperCase(), 
-          fullPath: parentTab.title 
-        };
+  // --- EDITOR SETUP ---
+  const handleInternalNavigation = (tabId: string) => {
+    const getParentOfTab = (targetId: string): string | null => {
+      for (const winId in windows) {
+        if (windows[winId].tabs.some(t => t.id === targetId)) return winId;
       }
-    }
-    return { title: "SUB-LEVEL", fullPath: "Sub" };
-  };
-
-  const addTab = (windowId: string) => {
-    const info = findParentInfo(windowId);
-    const win = windows[windowId];
-    if (!win) return;
-
-    // 1. Calculate the next increment number
-    let maxNum = 0;
-    win.tabs.forEach(t => {
-      // If title is "Research.2", we split by "." and get the "2"
-      const parts = t.title.split('.');
-      const lastPart = parts[parts.length - 1];
-      
-      // Also handle the "New Tab 1" case for the root
-      const numMatch = lastPart.match(/\d+/);
-      if (numMatch) {
-        const num = parseInt(numMatch[0]);
-        if (!isNaN(num) && num > maxNum) maxNum = num;
-      }
-    });
-
-    const nextNum = maxNum + 1;
-
-    // 2. Format the title
-    // If root: "New Tab 1", "New Tab 2"
-    // If sub: "Parent.1", "Parent.2"
-    const newTitle = windowId === 'root' 
-      ? `New Tab ${nextNum}` 
-      : `${info.fullPath}.${nextNum}`;
-
-    const newId = `tab-${Math.random().toString(36).substring(2, 11)}`;
-    
-    const newTab: Tab = { 
-      id: newId, 
-      title: newTitle, 
-      content: '', 
-      createdAt: Date.now()
+      return null;
     };
 
-    setWindows(prev => ({ 
-      ...prev, 
-      [windowId]: { 
-        ...prev[windowId], 
-        tabs: [...prev[windowId].tabs, newTab] 
-      },
-      [newId]: { 
-        id: newId, 
-        tabs: [], 
-        collapsed: false 
-      }
-    }));
-  };
-
-  // --- EXPORT LOGIC ---
-  const toggleTabSelection = (tab: Tab, selected: boolean) => {
-    const next = new Set(selectedTabIds);
-    const walk = (tId: string) => {
-      selected ? next.add(tId) : next.delete(tId);
-      // If this tab has a child window, walk those tabs too
-      if (windows[tId]) {
-        windows[tId].tabs.forEach(child => walk(child.id));
-      }
-    };
-    walk(tab.id);
-    setSelectedTabIds(next);
-  };
-
-  const handleFinalExport = () => {
-    const exportList: any[] = [];
-    
-    // Recursive walker that uses the new Window ID logic
-    const walk = (winId: string, depth: number, parentTitle: string = "Root") => {
-      const win = windows[winId];
-      if (!win) return;
-
-      win.tabs.forEach(tab => {
-        if (selectedTabIds.has(tab.id)) {
-          exportList.push({
-            id: tab.id,
-            title: tab.title,
-            content: tab.content,
-            depth: depth,
-            fromParent: parentTitle, 
-            createdAt: tab.createdAt
-          });
-          // Check if this tab has its own window (children)
-          if (windows[tab.id]) {
-            walk(tab.id, depth + 1, tab.title);
-          }
-        }
-      });
-    };
-
-    walk('root', 0);
-
-    let blob: Blob;
-    if (exportFormat === 'json') {
-      blob = new Blob([JSON.stringify(exportList, null, 2)], { type: 'application/json' });
-    } else {
-      const formattedText = exportList.map(item => {
-        const prefix = "=".repeat(item.depth + 1) + " ";
-        const cleanContent = item.content.replace(/<[^>]*>/g, '\n');
-        return `${prefix}${item.title.toUpperCase()} (Source: ${item.fromParent})\n${cleanContent}\n\n`;
-      }).join('\n');
-      blob = new Blob([formattedText], { type: 'text/plain' });
-    }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${exportFileName}.${exportFormat}`;
-    a.click();
-    setIsExportModalOpen(false);
-  };
-
-  // --- IMPORT LOGIC ---
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const importedData: any[] = JSON.parse(event.target?.result as string);
-        if (!Array.isArray(importedData)) throw new Error("Invalid format");
-
-        // Start with a clean slate or merge with 'root'
-        const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
-        
-        // 1. Create a map for IDs and verify titles
-        const idMap: Record<string, string> = {}; // Old Title -> New ID
-        importedData.forEach(item => {
-          idMap[item.title] = `tab-${Math.random().toString(36).substring(2, 11)}`;
-        });
-
-        // 2. Sort by depth to ensure parents are created before children
-        const sortedData = [...importedData].sort((a, b) => (a.depth || 0) - (b.depth || 0));
-
-        sortedData.forEach(item => {
-          const newId = idMap[item.title];
-          const parentTitle = item.fromParent;
-          
-          let targetWinId = 'root';
-          if (parentTitle !== "Root" && idMap[parentTitle]) {
-            targetWinId = idMap[parentTitle];
-          }
-
-          const newTab: Tab = {
-            id: newId,
-            title: item.title,
-            content: item.content,
-            createdAt: item.createdAt || Date.now(),
-          };
-
-          // Ensure the target window exists
-          if (!newWindows[targetWinId]) {
-            newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
-          }
-          newWindows[targetWinId].tabs.push(newTab);
-
-          // Initialize a window for the new tab in case it has children later
-          if (!newWindows[newId]) {
-            newWindows[newId] = { id: newId, tabs: [], collapsed: false };
-          }
-        });
-
-        setWindows(newWindows);
-        alert(`Successfully imported ${importedData.length} items.`);
-      } catch (err) {
-        console.error(err);
-        alert("Import failed: Ensure you are using a valid JSON export file.");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  // --- ACTIONS ---
-  const deleteTab = async (windowId: string, tabId: string) => {
-    if (!window.confirm("Delete this item and all sub-items?")) return;
-
-    const next = { ...windows };
-    const idsToRemove = new Set<string>();
-
-    // 1. RECURSIVE UI CLEANUP: Find every tab and window in this branch
-    const collectAndKill = (id: string) => {
-      idsToRemove.add(id);
-      
-      // If a window exists for this tab, it contains its children
-      if (next[id]) {
-        next[id].tabs.forEach(child => collectAndKill(child.id));
-        delete next[id]; // Kill the window object entirely
-      }
-    };
-
-    collectAndKill(tabId);
-
-    // 2. Remove the starting tab from its parent's list
-    if (next[windowId]) {
-      next[windowId].tabs = next[windowId].tabs.filter(t => t.id !== tabId);
+    const pathSteps: string[] = [];
+    let currentId: string | null = tabId;
+    while (currentId && currentId !== 'root') {
+      const parentId = getParentOfTab(currentId);
+      if (parentId) { pathSteps.unshift(parentId); currentId = parentId; } 
+      else { currentId = null; }
     }
 
-    // 3. Update State & Close Columns
-    setWindows(next);
-    setActivePath(prev => prev.filter(id => id === 'root' || next[id]));
-    if (activeTabId && idsToRemove.has(activeTabId)) setActiveTabId(null);
+    setActivePath(pathSteps.length > 0 ? pathSteps : ['root']);
+    setActiveTabId(tabId);
 
-    // 4. BACKEND CALL: The SQL handles the rest of the tree
-    try {
-      await fetch(`${API_URL}/tabs/${tabId}`, { method: 'DELETE' });
-    } catch (e) {
-      console.error("Sync error", e);
-    }
-  };
-
-  const handleTabClick = (windowId: string, tab: Tab, index: number) => {
-    // 1. Set the active tab highlight
-    setActiveTabId(tab.id);
-
-    // 2. Determine if we are clicking a tab that is already open at the end of the path
-    const isAlreadyOpen = activePath[index + 1] === tab.id;
-
-    if (isAlreadyOpen) {
-      // CLOSE: If it's already open, truncate the path to this level
-      setActivePath(activePath.slice(0, index + 1));
-      if (activeTabId === tab.id) setActiveTabId(null);
-    } else {
-      // OPEN: If it's not open, create the window if it doesn't exist and update path
-      if (!windows[tab.id]) {
-        setWindows(prev => ({
-          ...prev,
-          [tab.id]: { id: tab.id, tabs: [], collapsed: false }
-        }));
+    setTimeout(() => {
+      const element = document.getElementById(`tab-${tabId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+        element.classList.add('teleport-flash');
+        setTimeout(() => element.classList.remove('teleport-flash'), 1500);
       }
-      // Update path to include this new tab's window
-      setActivePath([...activePath.slice(0, index + 1), tab.id]);
-    }
+    }, 200);
   };
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        // We configure these separately for more control
-        heading: false,
-        bulletList: false, 
-        orderedList: false,
-        dropcursor: true,
-      }),
-      Heading.configure({ levels: [1, 2, 3] }),
-      BulletList,
-      OrderedList,
-      ListItem,
-      Table.configure({ resizable: true }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      Image.configure({
-        allowBase64: true, // SOME versions of Tiptap require this to be explicit
-      }),
+      StarterKit.configure({ heading: false, bulletList: false, orderedList: false, dropcursor: true }),
+      Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList, ListItem,
+      Table.configure({ resizable: true }), TableRow, TableHeader, TableCell,
+      Image.configure({ allowBase64: true }), WikiLink,
       Link.configure({ 
-        openOnClick: false, 
-        autolink: false, // Prevents random text from becoming links
-        HTMLAttributes: {
-          class: 'wiki-link',
-          target: null, // Ensure target="_blank" is NOT added
-          rel: null,
-        },
-       }),
-       WikiLink,
+        openOnClick: false, autolink: false, 
+        HTMLAttributes: { class: 'wiki-link', target: null, rel: null }
+      }),
     ],
     content: '',
     editorProps: {
@@ -505,19 +160,14 @@ export default function App() {
         click: (view, event) => {
           const target = event.target as HTMLElement;
           const wikiSpan = target.closest('.wiki-link');
-
           if (wikiSpan) {
             const tabId = wikiSpan.getAttribute('data-tab-id');
-            
-            // Check if tab exists in any window
             const tabExists = Object.values(windows).some(w => w.tabs.some(t => t.id === tabId));
-
             if (!tabExists) {
               wikiSpan.setAttribute('data-broken', 'true');
               alert("This tab has been deleted and the link is broken.");
               return true;
             }
-
             handleInternalNavigation(tabId!);
             return true;
           }
@@ -538,173 +188,18 @@ export default function App() {
       });
     },
   });
-  if (!editor) {
-    return null;
-  }
+
+  // Keep editor state synced with React state
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!editor) return;
-
-    const updateHandler = () => {
-      setTick(tick => tick + 1); // This forces React to look at editor.isActive() again
-    };
-
+    const updateHandler = () => setTick(t => t + 1);
     editor.on('selectionUpdate', updateHandler);
     editor.on('transaction', updateHandler);
-
-    return () => {
-      editor.off('selectionUpdate', updateHandler);
-      editor.off('transaction', updateHandler);
-    };
+    return () => { editor.off('selectionUpdate', updateHandler); editor.off('transaction', updateHandler); };
   }, [editor]);
 
-  useEffect(() => {
-    if (!editor) return;
-    
-    // Get all tab IDs currently in the system
-    const existingIds = new Set(Object.values(windows).flatMap(w => w.tabs.map(t => t.id)));
-    
-    // Find all wiki-link spans in the DOM and toggle the broken class
-    const links = document.querySelectorAll('.wiki-link');
-    links.forEach(link => {
-      const id = link.getAttribute('data-tab-id');
-      if (id && !existingIds.has(id)) {
-        link.classList.add('is-broken');
-      } else {
-        link.classList.remove('is-broken');
-      }
-    });
-  }, [editor?.getHTML(), windows]); // Re-run when content or tabs change
-
-  const handleInternalNavigation = (tabId: string) => {
-    // Helper: Find which window/tab "owns" a specific child tab
-    const getParentOfTab = (targetId: string): string | null => {
-      for (const winId in windows) {
-        if (windows[winId].tabs.some(t => t.id === targetId)) {
-          return winId;
-        }
-      }
-      return null;
-    };
-
-    const pathSteps: string[] = [];
-    let currentId: string | null = tabId;
-
-    // 1. Trace backwards from the target tab to 'root'
-    while (currentId && currentId !== 'root') {
-      const parentId = getParentOfTab(currentId);
-      if (parentId) {
-        pathSteps.unshift(parentId); // Add parent to the start of the path
-        currentId = parentId;
-      } else {
-        currentId = null;
-      }
-    }
-
-    // 2. Ensure the path starts with root
-    const finalPath = pathSteps.length > 0 ? pathSteps : ['root'];
-
-    // 3. Update the UI state
-    setActivePath(finalPath);
-    setActiveTabId(tabId);
-
-    // 4. Scroll the new column into view
-    setTimeout(() => {
-      const element = document.getElementById(`tab-${tabId}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', inline: 'center' });
-        element.classList.add('teleport-flash');
-        // Clean up the flash animation after it plays
-        setTimeout(() => element.classList.remove('teleport-flash'), 1500);
-      }
-    }, 200); // 200ms gives React enough time to render the new columns
-  };
-
-  const addInternalLink = () => {
-    if (!editor) return;
-    
-    // If the search UI is already open, CLOSE it.
-    if (linkSearch.active) {
-      setLinkSearch({ active: false, query: '' });
-      return;
-    }
-
-    // If text is selected, show the search UI.
-    if (!editor.state.selection.empty) {
-      setLinkSearch({ active: true, query: '' });
-    } else {
-      alert("Please highlight some text first to create a link!");
-    }
-  };
-
-  useEffect(() => {
-    const handleWikiClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      const anchor = target.closest('a');
-
-      // Only intercept if it's one of our internal wiki links
-      if (anchor && anchor.getAttribute('href')?.startsWith('#')) {
-        event.preventDefault(); // STOP the browser from opening a new tab/refreshing
-        event.stopPropagation();
-
-        const tabId = anchor.getAttribute('href')?.substring(1);
-        
-        if (tabId) {
-          // 1. Find which window this tab belongs to
-          const targetWindowId = Object.keys(windows).find(winId => 
-            windows[winId].tabs.some(t => t.id === tabId)
-          );
-
-          if (targetWindowId) {
-            console.log("Found tab in window:", targetWindowId);
-            
-            // 2. Logic to navigate: 
-            // You likely need to set the active window or scroll to it
-            // Example: setActiveTabId(tabId); 
-            
-            // If you have a ref for the Miller Column container:
-            const element = document.getElementById(`tab-${tabId}`);
-            element?.scrollIntoView({ behavior: 'smooth', inline: 'center' });
-          }
-        }
-      }
-    };
-
-    document.addEventListener('click', handleWikiClick);
-    return () => document.removeEventListener('click', handleWikiClick);
-  }, [windows]); // Re-run when windows change so we have the latest IDs
-
-  useEffect(() => {
-    const scanLinks = () => {
-      // 1. Map all existing tab IDs into a Set for fast lookup
-      const existingIds = new Set(Object.values(windows).flatMap(w => w.tabs.map(t => t.id)));
-      
-      // 2. Find every wiki-link in the current editor DOM
-      const links = document.querySelectorAll('.wiki-link');
-      
-      links.forEach(link => {
-        const id = link.getAttribute('data-tab-id');
-        // If the ID isn't in our 'existingIds' set, it's broken
-        if (id && !existingIds.has(id)) {
-          link.classList.add('is-broken');
-          link.setAttribute('data-broken', 'true');
-        } else {
-          link.classList.remove('is-broken');
-          link.removeAttribute('data-broken');
-        }
-      });
-    };
-
-    // Run immediately when windows change or a new tab is selected
-    scanLinks();
-
-    // Short delay to allow Tiptap to finish its internal DOM rendering
-    const timeout = setTimeout(scanLinks, 100);
-    return () => clearTimeout(timeout);
-
-  }, [windows, activeTabId, editor?.getHTML()]);
-  // Adding windows and activeTabId ensures it fires when you delete something!
-
+  // Sync content when active tab changes
   useEffect(() => {
     if (editor && activeTabId) {
       let content = "";
@@ -716,157 +211,228 @@ export default function App() {
     }
   }, [activeTabId, editor, windows]);
 
+  // Broken Link scanner
+  useEffect(() => {
+    const scanLinks = () => {
+      const existingIds = new Set(Object.values(windows).flatMap(w => w.tabs.map(t => t.id)));
+      document.querySelectorAll('.wiki-link').forEach(link => {
+        const id = link.getAttribute('data-tab-id');
+        if (id && !existingIds.has(id)) {
+          link.classList.add('is-broken'); link.setAttribute('data-broken', 'true');
+        } else {
+          link.classList.remove('is-broken'); link.removeAttribute('data-broken');
+        }
+      });
+    };
+    scanLinks();
+    const timeout = setTimeout(scanLinks, 100);
+    return () => clearTimeout(timeout);
+  }, [windows, activeTabId, editor?.getHTML()]);
+
+  // --- ACTIONS ---
+  const addTab = (windowId: string) => {
+    const win = windows[windowId];
+    if (!win) return;
+    
+    const info = windowId === 'root' ? { fullPath: "New Tab" } : { fullPath: windows[Object.keys(windows).find(k => windows[k].tabs.some(t => t.id === windowId)) || 'root']?.tabs.find(t => t.id === windowId)?.title || "Sub" };
+    
+    let maxNum = 0;
+    win.tabs.forEach(t => {
+      const parts = t.title.split('.');
+      const numMatch = parts[parts.length - 1].match(/\d+/);
+      if (numMatch) {
+        const num = parseInt(numMatch[0]);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    });
+
+    const newId = `tab-${Math.random().toString(36).substring(2, 11)}`;
+    const newTitle = windowId === 'root' ? `New Tab ${maxNum + 1}` : `${info.fullPath}.${maxNum + 1}`;
+    
+    setWindows(prev => ({ 
+      ...prev, 
+      [windowId]: { ...prev[windowId], tabs: [...prev[windowId].tabs, { id: newId, title: newTitle, content: '', createdAt: Date.now() }] },
+      [newId]: { id: newId, tabs: [], collapsed: false }
+    }));
+  };
+
+  const deleteTab = async (windowId: string, tabId: string) => {
+    if (!window.confirm("Delete this item and all sub-items?")) return;
+    const next = { ...windows };
+    const idsToRemove = new Set<string>();
+
+    const collectAndKill = (id: string) => {
+      idsToRemove.add(id);
+      if (next[id]) {
+        next[id].tabs.forEach(child => collectAndKill(child.id));
+        delete next[id];
+      }
+    };
+    collectAndKill(tabId);
+    if (next[windowId]) next[windowId].tabs = next[windowId].tabs.filter(t => t.id !== tabId);
+
+    setWindows(next);
+    setActivePath(prev => prev.filter(id => id === 'root' || next[id]));
+    if (activeTabId && idsToRemove.has(activeTabId)) setActiveTabId(null);
+    try { await fetch(`${API_URL}/tabs/${tabId}`, { method: 'DELETE' }); } catch (e) { console.error(e); }
+  };
+
+  const handleTabClick = (windowId: string, tab: Tab, index: number) => {
+    setActiveTabId(tab.id);
+    if (activePath[index + 1] === tab.id) {
+      setActivePath(activePath.slice(0, index + 1));
+      if (activeTabId === tab.id) setActiveTabId(null);
+    } else {
+      if (!windows[tab.id]) setWindows(prev => ({ ...prev, [tab.id]: { id: tab.id, tabs: [], collapsed: false } }));
+      setActivePath([...activePath.slice(0, index + 1), tab.id]);
+    }
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const importedData: any[] = JSON.parse(event.target?.result as string);
+        const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
+        const idMap: Record<string, string> = {}; 
+        importedData.forEach(item => { idMap[item.title] = `tab-${Math.random().toString(36).substring(2, 11)}`; });
+
+        [...importedData].sort((a, b) => (a.depth || 0) - (b.depth || 0)).forEach(item => {
+          const newId = idMap[item.title];
+          const targetWinId = (item.fromParent !== "Root" && idMap[item.fromParent]) ? idMap[item.fromParent] : 'root';
+          if (!newWindows[targetWinId]) newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
+          newWindows[targetWinId].tabs.push({ id: newId, title: item.title, content: item.content, createdAt: item.createdAt || Date.now() });
+          if (!newWindows[newId]) newWindows[newId] = { id: newId, tabs: [], collapsed: false };
+        });
+        setWindows(newWindows);
+      } catch (err) { alert("Import failed: Ensure you are using a valid JSON export file."); }
+    };
+    reader.readAsText(file);
+  };
+
+  const getEditorStats = () => {
+    if (!editor) return { chars: 0, words: 0, lines: 0 };
+    const text = editor.getText();
+    return { chars: text.length, words: text.trim() ? text.trim().split(/\s+/).length : 0, lines: text.split(/\r\n|\r|\n/).length };
+  };
+
   const activeBranchIds = activePath.map(winId => {
     for (const pid in windows) {
-      const parentTab = windows[pid].tabs.find(t => t.childWindowId === winId);
+      const parentTab = windows[pid].tabs.find(t => t.id === winId); // Fixed property to match parent/child relationship
       if (parentTab) return parentTab.id;
     }
     return null;
   }).filter(Boolean);
 
-  const ExportTreeNode = ({ winId, depth }: { winId: string; depth: number }) => {
-    const win = windows[winId];
-    if (!win || win.tabs.length === 0) return null;
-    return (
-      <div style={{ marginLeft: depth * 15 }}>
-        {win.tabs.map(tab => (
-          <div key={tab.id}>
-            <label className="modal-checkbox-row">
-              <input 
-                type="checkbox" 
-                checked={selectedTabIds.has(tab.id)} 
-                onChange={(e) => toggleTabSelection(tab, e.target.checked)} 
-              />
-              <span className="modal-tab-name">{tab.title}</span>
-            </label>
-            {/* If a window exists for this tab ID, it has children */}
-            {windows[tab.id] && <ExportTreeNode winId={tab.id} depth={depth + 1} />}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && editor) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        
-        // 1. Insert the image
-        editor.chain().focus().setImage({ src: base64 }).run();
-
-        // 2. Wait a tiny bit for Tiptap to update its internal DOM
-        setTimeout(() => {
-          const html = editor.getHTML();
-          console.log("HTML to be saved:", html); // Verify <img> is in here!
-          
-          // If you have a manual save function, call it here
-          // saveToBackend(activeTabId, html); 
-        }, 100);
-        };
-      reader.readAsDataURL(file);
-    }
-  };
-
   return (
-    <div className="app-container">
+    <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}>
       <div className="miller-columns">
         {activePath.map((winId, index) => {
           const win = windows[winId];
-          if (!win) return null;
+          let windowName = 'LIBRARY';
+          if (winId !== 'root') {
+            // We look through all windows to find the tab whose ID matches this window's ID
+            const parentTab = Object.values(windows)
+              .flatMap(w => w.tabs)
+              .find(t => t.id === winId);
+            
+            windowName = parentTab ? parentTab.title.toUpperCase() : 'SUB-LEVEL';
+          }
+          
           const isCollapsed = win.collapsed;
           const query = searchQueries[winId]?.toLowerCase() || "";
-          const sortMode = globalSortMode;
-          const displayTabs = [...win.tabs].filter(t => t.title.toLowerCase().includes(query));
+          
+          // Use the width from state, or default to 280 (or 40 if collapsed)
+          const currentWidth = isCollapsed ? 40 : (win.width || 280);
 
-          if (sortMode === 'alpha') displayTabs.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
-          if (sortMode === 'alpha-desc') displayTabs.sort((a, b) => b.title.localeCompare(a.title, undefined, { numeric: true }));
-          if (sortMode === 'newest') displayTabs.sort((a, b) => b.createdAt - a.createdAt);
-          if (sortMode === 'oldest') displayTabs.sort((a, b) => a.createdAt - b.createdAt);
+          const displayTabs = [...win.tabs].filter(t => t.title.toLowerCase().includes(query)).sort((a, b) => {
+            if (globalSortMode === 'alpha') return a.title.localeCompare(b.title, undefined, { numeric: true });
+            if (globalSortMode === 'alpha-desc') return b.title.localeCompare(a.title, undefined, { numeric: true });
+            if (globalSortMode === 'newest') return b.createdAt - a.createdAt;
+            return a.createdAt - b.createdAt;
+          });
 
           return (
-            <ResizableBox key={winId} width={isCollapsed ? 40 : 280} height={Infinity} axis="x" minConstraints={[isCollapsed ? 40 : 150, Infinity]} handle={<div className="drag-handle" onDoubleClick={() => setWindows(p => ({ ...p, [winId]: { ...p[winId], collapsed: !isCollapsed } }))} />}>
-              <div className={`column ${isCollapsed ? 'collapsed' : ''}`}>
+            <ResizableBox 
+              key={winId} 
+              width={currentWidth} 
+              height={Infinity} 
+              axis="x" 
+              minConstraints={[isCollapsed ? 40 : 150, Infinity]}
+              maxConstraints={[600, Infinity]}
+              // UPDATED: Sync the width back to your windows state
+              onResize={(e, { size }) => {
+                setWindows(p => ({
+                  ...p,
+                  [winId]: { 
+                    ...p[winId], 
+                    width: size.width,
+                    // Auto-collapse if user drags the window smaller than 60px
+                    collapsed: size.width <= 60 
+                  }
+                }));
+              }}
+              handle={
+                <div 
+                  className="drag-handle" 
+                  onDoubleClick={() => setWindows(p => ({ 
+                    ...p, 
+                    [winId]: { ...p[winId], collapsed: !isCollapsed, width: isCollapsed ? 280 : 40 } 
+                  }))} 
+                />
+              }
+            >
+              <div className={`column ${isCollapsed ? 'collapsed' : ''}`} style={{ width: '100%' }}>
                 <div className="column-header">
-                  <span className="header-title">{findParentInfo(winId).title}</span>
-                  {!isCollapsed && (
+                  <span className="header-title">{windowName}</span>
+                  {!isCollapsed && winId === 'root' && (
                     <div className="header-controls">
-                      {/* ONLY SHOW SORTING IN ROOT */}
-                      {winId === 'root' && (
-                        <div className="control-section">
-                          <span className="section-label">GLOBAL SORTING</span>
-                          <div className="button-row">
-                            <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>OLDEST</button>
-                            <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>NEWEST</button>
-                            <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
-                            <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
-                          </div>
+                      <div className="control-section">
+                        <span className="section-label">GLOBAL SORTING</span>
+                        <div className="button-row">
+                          <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>OLDEST</button>
+                          <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>NEWEST</button>
+                          <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
+                          <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
                         </div>
-                      )}
-
-                      {/* SYSTEM CONTROLS (Keep in root) */}
-                      {winId === 'root' && (
-                        <div className="control-section">
-                          <span className="section-label">SYSTEM</span>
-                          <div className="button-row">
-                            <button className="export-btn" disabled={win.tabs.length === 0} onClick={() => {
-                                setSelectedTabIds(new Set(Object.values(windows).flatMap(w => w.tabs.map(t => t.id))));
-                                setIsExportModalOpen(true);
-                            }}>EXPORT</button>
-                            <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
-                            {/* NEW BUTTON */}
-                            <button className="toggle-all-btn" onClick={toggleAllWindows} title="Toggle all sub-windows">
-                              {Object.values(windows).some(w => w.id !== 'root' && !w.collapsed) ? 'COLLAPSE ALL' : 'EXPAND ALL'}
-                            </button>
-                            <button 
-                              className="theme-toggle-btn" 
-                              onClick={() => setIsDarkMode(!isDarkMode)}
-                              title="Toggle Dark/Light Mode"
-                            >
-                              {isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}
-                            </button>
-                            <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={handleImport} />
-                          </div>
-                          {/* NEW SHORTCUTS PANEL (ROOT ONLY) */}
-                          <div className="shortcuts-legend">
-                            <div className="legend-item"><b>ENTER</b> Select</div>
-                            <div className="legend-item"><b>F2</b> Rename</div>
-                            <div className="legend-item"><b>DEL</b> Delete</div>
-                            <div className="legend-item"><b>DBL-CLK</b> Toggle Width</div>
-                          </div>
+                      </div>
+                      <div className="control-section">
+                        <span className="section-label">SYSTEM</span>
+                        <div className="button-row">
+                          <button className="export-btn" disabled={win.tabs.length === 0} onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
+                          <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
+                          <button className="toggle-all-btn" onClick={() => setWindows(p => { 
+                            const any = Object.entries(p).some(([id, w]) => id !== 'root' && !w.collapsed); 
+                            const next = {...p}; 
+                            Object.keys(next).forEach(id => { if (id !== 'root') next[id] = {...next[id], collapsed: any}; }); 
+                            return next; 
+                          })}>
+                            {Object.values(windows).some(w => w.id !== 'root' && !w.collapsed) ? 'COLLAPSE ALL' : 'EXPAND ALL'}
+                          </button>
+                          <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
+                          <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={handleImport} />
                         </div>
-                      )}
+                      </div>
                     </div>
                   )}
                 </div>
                 {!isCollapsed && (
                   <>
-                    <div className="search-bar"><input placeholder="Search..." value={searchQueries[winId] || ""} onChange={(e) => setSearchQueries(p => ({ ...p, [winId]: e.target.value }))} /></div>
+                    <div className="search-bar">
+                      <input 
+                        placeholder="Search..." 
+                        value={searchQueries[winId] || ""} 
+                        onChange={(e) => setSearchQueries(p => ({ ...p, [winId]: e.target.value }))} 
+                      />
+                    </div>
                     <div className="tab-list">
                       {displayTabs.map(tab => (
                         <div 
-                          key={tab.id} 
+                          key={tab.id} id={`tab-${tab.id}`}
                           className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${activeBranchIds.includes(tab.id) ? 'branch-active' : ''}`} 
                           tabIndex={0} 
-                          onKeyDown={(e) => {
-                            // ENTER: Open/Navigate
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleTabClick(winId, tab, index);
-                            }
-                            // F2: Trigger Rename
-                            if (e.key === 'F2') {
-                              e.preventDefault();
-                              setEditingTabId(tab.id);
-                            }
-                            // DELETE: Trigger Delete
-                            if (e.key === 'Delete') {
-                              e.preventDefault();
-                              deleteTab(winId, tab.id);
-                            }
-                          }}
                           onClick={() => handleTabClick(winId, tab, index)}
                         >
                           {editingTabId === tab.id ? (
@@ -874,23 +440,18 @@ export default function App() {
                               autoFocus 
                               value={tab.title} 
                               onBlur={() => setEditingTabId(null)} 
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.stopPropagation();
-                                  setEditingTabId(null);
-                                }
-                              }} 
-                              onChange={(e) => {
-                                const next = { ...windows };
-                                const t = next[winId].tabs.find(i => i.id === tab.id);
-                                if (t) t.title = e.target.value;
-                                setWindows(next);
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditingTabId(null); } }} 
+                              onChange={(e) => { 
+                                const next = { ...windows }; 
+                                const t = next[winId].tabs.find(i => i.id === tab.id); 
+                                if (t) t.title = e.target.value; 
+                                setWindows(next); 
                               }} 
                             />
                           ) : ( <span className="tab-title">{tab.title}</span> )}
                           <div className="tab-actions">
-                            <button className="edit-btn" tabIndex={-1} onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
-                            <button className="del-btn" tabIndex={-1} onClick={(e) => { e.stopPropagation(); deleteTab(winId, tab.id); }}>✕</button>
+                            <button className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
+                            <button className="del-btn" onClick={(e) => { e.stopPropagation(); deleteTab(winId, tab.id); }}>✕</button>
                           </div>
                         </div>
                       ))}
@@ -902,195 +463,23 @@ export default function App() {
             </ResizableBox>
           );
         })}
+        
         <div className="writing-space">
           {activeTabId && editor ? (
             <div className="editor-wrapper">
-              <div className="editor-toolbar">
-                <div className="tools">
-                  {/* Text Style Group */}
-                  <div className="tool-group">
-                    {/* Text Styles */}
-                    <button 
-                      onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} 
-                      className={editor.isActive('heading', { level: 1 }) ? 'is-active' : ''}
-                      title="Heading 1"
-                    >
-                      <Heading1 size={18} />
-                    </button>
-                    
-                    <button 
-                      onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} 
-                      className={editor.isActive('heading', { level: 2 }) ? 'is-active' : ''}
-                      title="Heading 2"
-                    >
-                      <Heading2 size={18} />
-                    </button>
-
-                    <button 
-                      onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} 
-                      className={editor.isActive('heading', { level: 3 }) ? 'is-active' : ''}
-                      title="Heading 3"
-                    >
-                      <Heading3 size={18} />
-                    </button>
-
-                    <button 
-                      onClick={() => editor.chain().focus().setParagraph().run()} 
-                      className={editor.isActive('paragraph') ? 'is-active' : ''}
-                      title="Paragraph"
-                    >
-                      <Type size={18} />
-                    </button>
-                    
-                    <div className="tool-separator" />
-
-                    {/* Formatting */}
-                    <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''} title="Bold"><Bold size={18} /></button>
-                    <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''} title="Italic"><Italic size={18} /></button>
-                    <button onClick={() => editor.chain().focus().toggleStrike().run()} className={editor.isActive('strike') ? 'is-active' : ''} title="Strike"><Strikethrough size={18} /></button>
-
-                    <div className="tool-separator" />
-
-                    {/* Lists */}
-                    <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={editor.isActive('bulletList') ? 'is-active' : ''} title="Bullet List"><List size={18} /></button>
-                    <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={editor.isActive('orderedList') ? 'is-active' : ''} title="Numbered List"><ListOrdered size={18} /></button>
-
-                    <div className="tool-separator" />
-
-                    {/* Media & Tables */}
-                    <button onClick={() => document.getElementById('image-upload')?.click()} title="Upload Image"><ImageIcon size={18} /></button>
-                    <input 
-                      id="image-upload" 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleImageUpload} 
-                      style={{ display: 'none' }} 
-                    />
-                    
-                    <button onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table"><TableIcon size={18} /></button>
-                    <button 
-                      onClick={addInternalLink}
-                      className={editor.isActive('link') ? 'is-active' : ''}
-                      title="Add Wiki Link"
-                    >
-                      <LinkIcon size={18} />
-                    </button>
-
-                    {/* Contextual Table Controls */}
-                    {editor.isActive('table') && (
-                      <>
-                        <div className="tool-separator" />
-                        <button 
-                          onClick={() => editor.chain().focus().addColumnAfter().run()} 
-                          title="Add Column"
-                        >
-                          <Columns size={18} />
-                        </button>
-                        <button 
-                          onClick={() => editor.chain().focus().addRowAfter().run()} 
-                          title="Add Row"
-                        >
-                          <Rows size={18} />
-                        </button>
-                        <button 
-                          onClick={() => editor.chain().focus().deleteTable().run()} 
-                          style={{color: '#ff4d4d'}} 
-                          title="Delete Table"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </>
-                    )}
-                    {linkSearch.active && (
-                      <div className="wiki-link-search">
-                        <input 
-                          autoFocus
-                          placeholder="Search tabs..."
-                          value={linkSearch.query}
-                          onChange={(e) => setLinkSearch({ ...linkSearch, query: e.target.value })}
-                          onKeyDown={(e) => e.key === 'Escape' && setLinkSearch({ active: false, query: '' })}
-                        />
-                        <div className="search-results">
-                          {Object.values(windows)
-                            .flatMap(w => w.tabs)
-                            .filter(t => t.title.toLowerCase().includes(linkSearch.query.toLowerCase()))
-                            .slice(0, 5)
-                            .map(t => ( // 't' is the tab from the list
-                              <div 
-                                key={t.id} 
-                                className="search-item"
-                                onClick={() => {
-                                  // Now we use 't.id' correctly
-                                  editor.chain().focus().extendMarkRange('wikiLink').setMark('wikiLink', { tabId: t.id }).run();
-                                  setLinkSearch({ active: false, query: '' });
-                                }}
-                              >
-                                {t.title}
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {/* SYNC INDICATOR */}
-                <div className="sync-indicator-container">
-                  <div className={`sync-indicator ${saveStatus}`}>
-                    {saveStatus === 'saving' && "● Syncing..."}
-                    {saveStatus === 'saved' && (
-                      <div className="saved-group">
-                        <span>✓ Saved</span>
-                        {lastSaved && <span className="save-time">at {lastSaved}</span>}
-                      </div>
-                    )}
-                    {saveStatus === 'error' && (
-                      <div className="error-group">
-                        <span>⚠ Sync Error</span>
-                        <button className="retry-sync-btn" onClick={handleManualRetry}>Retry</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <EditorToolbar editor={editor} windows={windows} saveStatus={saveStatus} lastSaved={lastSaved} handleManualRetry={() => setWindows(p => ({...p}))} />
               <EditorContent editor={editor} className="rich-editor" />
-              {/* STATS FOOTER (Notepad++ Style) */}
               <div className="editor-footer">
                 <div className="stat">Length: <span>{getEditorStats().chars}</span></div>
                 <div className="stat">Words: <span>{getEditorStats().words}</span></div>
                 <div className="stat">Lines: <span>{getEditorStats().lines}</span></div>
-                <div className="stat-right">UTF-8 | Windows (CR LF)</div>
               </div>
             </div>
           ) : <div className="empty-state">Select an item to edit content.</div>}
         </div>
       </div>
 
-      {isExportModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsExportModalOpen(false)}>
-          <div className="export-modal large" onClick={e => e.stopPropagation()}>
-            <h3 style={{color: '#007acc', margin: '0 0 15px 0'}}>Export Configuration</h3>
-            <div className="modal-field">
-              <label>File Name</label>
-              <input value={exportFileName} onChange={e => setExportFileName(e.target.value)} />
-            </div>
-            <div className="modal-field tree-selector">
-              <label>Select Content to Export</label>
-              <div className="tree-container"><ExportTreeNode winId="root" depth={0} /></div>
-            </div>
-            <div className="modal-field">
-              <label>Format</label>
-              <div className="button-row">
-                <button className={exportFormat === 'txt' ? 'active' : ''} onClick={() => setExportFormat('txt')}>Text Document</button>
-                <button className={exportFormat === 'json' ? 'active' : ''} onClick={() => setExportFormat('json')}>Database (JSON)</button>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="cancel-btn" onClick={() => setIsExportModalOpen(false)}>Cancel</button>
-              <button className="confirm-btn" onClick={handleFinalExport}>Download {selectedTabIds.size} Items</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {isExportModalOpen && <ExportModal windows={windows} onClose={() => setIsExportModalOpen(false)} />}
     </div>
   );
 }
