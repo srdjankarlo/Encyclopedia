@@ -4,7 +4,7 @@ import { Editor } from '@tiptap/react';
 import { 
   Heading1, Heading2, Heading3, Type, Bold, Italic, Strikethrough, 
   List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
-  Columns, Rows, Trash2, Link as LinkIcon, CheckSquare
+  Columns, Rows, Trash2, Link as LinkIcon, CheckSquare, MinusSquare, PlusSquare
 } from 'lucide-react';
 import type { WindowData, SaveStatus } from '../types';
 
@@ -75,8 +75,14 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
           {editor.isActive('table') && (
             <>
               <div className="tool-separator" />
-              <button onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column"><Columns size={18} /></button>
-              <button onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row"><Rows size={18} /></button>
+              <button onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Before"><Columns size={18} /></button>
+              <button onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column After"><Columns size={18} /></button>
+              <button onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Column" style={{color: '#ff4d4d'}}><MinusSquare size={18} /></button>
+              <div className="tool-separator" />
+              <button onClick={() => editor.chain().focus().addRowBefore().run()} title="Add Row Before"><Rows size={18} /></button>
+              <button onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row After"><Rows size={18} /></button>
+              <button onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row" style={{color: '#ff4d4d'}}><MinusSquare size={18} /></button>
+              <div className="tool-separator" />
               <button onClick={() => editor.chain().focus().deleteTable().run()} style={{color: '#ff4d4d'}} title="Delete Table"><Trash2 size={18} /></button>
             </>
           )}

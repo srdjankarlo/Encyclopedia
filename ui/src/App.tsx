@@ -153,7 +153,7 @@ export default function App() {
         nested: true,
       }),
       Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList, ListItem,
-      Table.configure({ resizable: true }), TableRow, TableHeader, TableCell,
+      Table.configure({ resizable: true, lastColumnResizable: true, allowTableNodeSelection: true}), TableRow, TableHeader, TableCell,
       Image.configure({ allowBase64: true }), WikiLink,
       Link.configure({ 
         openOnClick: false, autolink: false, 

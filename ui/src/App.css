@@ -283,6 +283,48 @@ ul[data-type="taskList"] li > div p {
 
 .rich-editor { flex-grow: 1; padding: 40px 60px; overflow-y: auto; background-color: var(--bg-main); }
 .rich-editor table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: 0; overflow: hidden; border: 1px solid var(--border-color); }
+/* Container for the table within the editor */
+.ProseMirror table {
+  border-collapse: collapse;
+  table-layout: auto; /* Allows table to shrink to content size */
+  width: auto !important; /* Prevents stretching to full width by default */
+  min-width: 100px;
+  margin: 0;
+  overflow: hidden;
+}
+.ProseMirror td, 
+.ProseMirror th {
+  min-width: 1em;
+  border: 2px solid var(--border-color); /* Match your theme colors */
+  padding: 3px 5px;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+}
+/* Tiptap's specific column resizer handle */
+.ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background-color: #adf;
+  pointer-events: none;
+}
+/* Selected table styling */
+.ProseMirror .selectedCell:after {
+  z-index: 2;
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: rgba(200, 200, 255, 0.4);
+  pointer-events: none;
+}
+.ProseMirror table img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
 .rich-editor td, .rich-editor th { min-width: 1em; border: 1px solid var(--border-color); padding: 3px 5px; vertical-align: top; box-sizing: border-box; }
 .rich-editor th { font-weight: bold; text-align: left; background-color: var(--bg-sidebar); }
 .rich-editor img { max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 10px 0; }
