@@ -335,6 +335,30 @@ ul[data-type="taskList"] li > div p {
   outline: 3px solid #3b82f6;
 }
 .ProseMirror p { margin-bottom: 1em; }
+/* Ensure the resizer container is visible and handles events */
+.ProseMirror .node-imageResize {
+  display: inline-block;
+  position: relative !important;
+  line-height: 0;
+}
+/* This is the class used by most 'tiptap-extension-resize-image' versions */
+.ProseMirror .node-imageResize .handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background-color: var(--accent-color, #3b82f6) !important;
+  border: 1px solid white;
+  border-radius: 2px;
+  cursor: nwse-resize;
+  z-index: 100;
+  display: block !important; /* Ensure it's not hidden */
+}
+/* Highlight the image when it's clicked so you know it's ready to resize */
+.ProseMirror-selectednode {
+  outline: 3px solid var(--accent-color, #3b82f6);
+}
 .empty-state { margin: auto; color: var(--text-muted); font-style: italic; }
 /* =========================
    6. STATS & SYNC

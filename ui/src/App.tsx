@@ -10,7 +10,6 @@ import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
-import { Image } from '@tiptap/extension-image';
 import ImageResize from 'tiptap-extension-resize-image';
 import { Link } from '@tiptap/extension-link';
 
@@ -154,32 +153,31 @@ export default function App() {
       }),
       Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList,
       Table.configure({ resizable: true, lastColumnResizable: true, allowTableNodeSelection: true}), TableRow, TableHeader, TableCell,
-      Image.configure({
-        allowBase64: true,
-      }),
       // Use 'as any' to bypass the property errors while keeping the logic intact
       (ImageResize as any).configure({
-        // This allows the extension to "see" and "write" the width/height to the <img> tag
         inline: false,
+        allowBase64: true, // Most resize extensions pass this to the base image logic
         HTMLAttributes: {
           class: 'resizable-image',
         },
-        // Ensure it knows how to handle the data coming from the DB
         addAttributes() {
           return {
+            src: {},
+            alt: { default: null },
+            title: { default: null },
             width: {
               default: 'auto',
               renderHTML: (attributes: any) => ({
                 width: attributes.width,
               }),
-              parseHTML: (element: HTMLElement) => element.getAttribute('width'),
+              parseHTML: (element: HTMLElement) => element.getAttribute('width') || 'auto',
             },
             height: {
               default: 'auto',
               renderHTML: (attributes: any) => ({
                 height: attributes.height,
               }),
-              parseHTML: (element: HTMLElement) => element.getAttribute('height'),
+              parseHTML: (element: HTMLElement) => element.getAttribute('height') || 'auto',
             },
           };
         },
