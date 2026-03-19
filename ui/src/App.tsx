@@ -19,6 +19,8 @@ import { WikiLink } from './extensions/WikiLink';
 import ExportModal from './components/ExportModal';
 import EditorToolbar from './components/EditorToolbar';
 import './App.css';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
 
 const API_URL = "http://localhost:8080";
 
@@ -146,6 +148,10 @@ export default function App() {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: false, bulletList: false, orderedList: false, dropcursor: {} }),
+      TaskList,
+      TaskItem.configure({
+        nested: true,
+      }),
       Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList, ListItem,
       Table.configure({ resizable: true }), TableRow, TableHeader, TableCell,
       Image.configure({ allowBase64: true }), WikiLink,

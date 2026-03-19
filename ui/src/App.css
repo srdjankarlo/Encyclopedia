@@ -240,6 +240,44 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
   transform: scale(0.92); box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
 }
 
+/* Checklist styling */
+/* Container for the whole list */
+ul[data-type="taskList"] {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+/* The individual row */
+ul[data-type="taskList"] li {
+  display: flex;             /* Align children horizontally */
+  align-items: center;       /* Center checkbox and text vertically */
+  margin-bottom: 0.5rem;
+}
+/* The checkbox wrapper */
+ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;            /* Don't let the checkbox grow/shrink */
+  margin-right: 12px;        /* Space between box and text */
+  user-select: none;
+  display: flex;             /* Internal centering for the input itself */
+  align-items: center;
+}
+/* The checkbox itself */
+ul[data-type="taskList"] input[type="checkbox"] {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  margin: 0;                 /* Remove default browser margins */
+}
+/* The text container */
+ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;            /* Let the text take up remaining space */
+  margin: 0;                 /* Reset margins that might push text down */
+}
+/* Ensure paragraphs inside the task item don't add extra vertical spacing */
+ul[data-type="taskList"] li > div p {
+  margin: 0;
+}
+
 .tool-separator { width: 1px; height: 20px; background: var(--border-color); margin: 0 8px; }
 .tool-group { display: flex; gap: 4px; }
 

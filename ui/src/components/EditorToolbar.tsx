@@ -4,7 +4,7 @@ import { Editor } from '@tiptap/react';
 import { 
   Heading1, Heading2, Heading3, Type, Bold, Italic, Strikethrough, 
   List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
-  Columns, Rows, Trash2, Link as LinkIcon
+  Columns, Rows, Trash2, Link as LinkIcon, CheckSquare
 } from 'lucide-react';
 import type { WindowData, SaveStatus } from '../types';
 
@@ -60,6 +60,7 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
 
           <div className="tool-separator" />
 
+          <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={editor.isActive('taskList') ? 'is-active' : ''} title="Checklist"><CheckSquare size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={editor.isActive('bulletList') ? 'is-active' : ''} title="Bullet List"><List size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={editor.isActive('orderedList') ? 'is-active' : ''} title="Numbered List"><ListOrdered size={18} /></button>
 
@@ -68,7 +69,7 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
           <button onClick={() => document.getElementById('image-upload')?.click()} title="Upload Image"><ImageIcon size={18} /></button>
           <input id="image-upload" type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
           
-          <button onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table"><TableIcon size={18} /></button>
+          <button onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()} title="Insert Table"><TableIcon size={18} /></button>
           <button onClick={addInternalLink} className={editor.isActive('link') ? 'is-active' : ''} title="Add Wiki Link"><LinkIcon size={18} /></button>
 
           {editor.isActive('table') && (
