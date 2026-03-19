@@ -101,19 +101,6 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [windows]);
 
-  // const collapseAllWindows = () => {
-  //   setWindows(prev => {
-  //     const next = { ...prev };
-  //     Object.keys(next).forEach(id => {
-  //       // We usually keep the root open, but collapse everything else
-  //       if (id !== 'root') {
-  //         next[id] = { ...next[id], collapsed: true };
-  //       }
-  //     });
-  //     return next;
-  //   });
-  // };
-
   // --- EDITOR SETUP ---
   const handleInternalNavigation = (tabId: string) => {
     const getParentOfTab = (targetId: string): string | null => {
