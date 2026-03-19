@@ -1,12 +1,14 @@
+// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use axum::{
-    routing::{get, post, delete}, // Added delete here
+    routing::{get, post, delete},
     Router, Json, extract::{State, Path}, 
     http::StatusCode
 };
 use axum::extract::DefaultBodyLimit;
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite, Row};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -21,16 +23,13 @@ struct Tab {
 
 #[tokio::main]
 async fn main() {
-    // This creates 'miller.db' in the folder where you run the app
+    // 1. Setup the Database
     let database_url = "sqlite:miller.db?mode=rwc";
-
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(database_url)
         .await
         .expect("Failed to connect to SQlite");
-
-    println!("Standalone DB initialized: miller.db");
 
     let _ = sqlx::query(
         "CREATE TABLE IF NOT EXISTS tabs (
@@ -44,28 +43,27 @@ async fn main() {
     )
     .execute(&pool)
     .await;
-    
-    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_tabs_parent_id ON tabs(parent_id);")
-    .execute(&pool)
-    .await;
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_headers(Any)
-        .allow_methods(Any);
-
-    // Added the DELETE route with a path parameter :id
+    // 2. Setup the Axum Server
+    let cors = CorsLayer::new().allow_origin(Any).allow_headers(Any).allow_methods(Any);
     let app = Router::new()
         .route("/health", get(|| async { "Backend is healthy!" }))
         .route("/tabs", get(get_tabs).post(save_tab))
         .route("/tabs/:id", delete(delete_tab))
-        .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // Allows up to 10MB
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
         .layer(cors)
         .with_state(pool);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
-    println!("🚀 Server running on 0.0.0.0:8080");
-    axum::serve(listener, app).await.unwrap();
+    // 3. Run the Axum Server in a background task
+    tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    // 4. Start the Tauri Window System
+    tauri::Builder::default()
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 
 // --- HANDLERS ---

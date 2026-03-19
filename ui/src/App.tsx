@@ -100,18 +100,18 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [windows]);
 
-  const collapseAllWindows = () => {
-    setWindows(prev => {
-      const next = { ...prev };
-      Object.keys(next).forEach(id => {
-        // We usually keep the root open, but collapse everything else
-        if (id !== 'root') {
-          next[id] = { ...next[id], collapsed: true };
-        }
-      });
-      return next;
-    });
-  };
+  // const collapseAllWindows = () => {
+  //   setWindows(prev => {
+  //     const next = { ...prev };
+  //     Object.keys(next).forEach(id => {
+  //       // We usually keep the root open, but collapse everything else
+  //       if (id !== 'root') {
+  //         next[id] = { ...next[id], collapsed: true };
+  //       }
+  //     });
+  //     return next;
+  //   });
+  // };
 
   // --- EDITOR SETUP ---
   const handleInternalNavigation = (tabId: string) => {
@@ -145,7 +145,7 @@ export default function App() {
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: false, bulletList: false, orderedList: false, dropcursor: true }),
+      StarterKit.configure({ heading: false, bulletList: false, orderedList: false, dropcursor: {} }),
       Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList, ListItem,
       Table.configure({ resizable: true }), TableRow, TableHeader, TableCell,
       Image.configure({ allowBase64: true }), WikiLink,
@@ -157,7 +157,7 @@ export default function App() {
     content: '',
     editorProps: {
       handleDOMEvents: {
-        click: (view, event) => {
+        click: (_view, event) => {
           const target = event.target as HTMLElement;
           const wikiSpan = target.closest('.wiki-link');
           if (wikiSpan) {
@@ -277,7 +277,7 @@ export default function App() {
     try { await fetch(`${API_URL}/tabs/${tabId}`, { method: 'DELETE' }); } catch (e) { console.error(e); }
   };
 
-  const handleTabClick = (windowId: string, tab: Tab, index: number) => {
+  const handleTabClick = (_windowId: string, tab: Tab, index: number) => {
     setActiveTabId(tab.id);
     if (activePath[index + 1] === tab.id) {
       setActivePath(activePath.slice(0, index + 1));
@@ -364,7 +364,7 @@ export default function App() {
               minConstraints={[isCollapsed ? 40 : 150, Infinity]}
               maxConstraints={[600, Infinity]}
               // UPDATED: Sync the width back to your windows state
-              onResize={(e, { size }) => {
+              onResize={(_e, { size }) => {
                 setWindows(p => ({
                   ...p,
                   [winId]: { 

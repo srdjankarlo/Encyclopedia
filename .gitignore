@@ -1,21 +1,39 @@
-# --- UI (React/Vite) ---
-ui/node_modules/
-ui/dist/
-ui/dist-ssr/
-ui/*.local
-ui/.eslintcache
-
-# --- Server (Rust) ---
-server/target/
-# Ignore any cargo-generated backup files
-server/*.rs.bk
-
-# --- Docker & OS ---
+# --- System / IDEs ---
 .DS_Store
 Thumbs.db
 *.log
+.vscode/
+.idea/
+.env
+.env.*
 
-# --- Local Databases / Data ---
-# If your docker-compose creates a data folder for Postgres/MySQL
+# --- Global Build Artifacts (Covers UI, Server, and Tauri) ---
+**/node_modules/
+**/target/
+**/dist/
+**/dist-ssr/
+**/binaries/
+
+# --- UI Specific (Vite/React) ---
+ui/*.local
+ui/.eslintcache
+
+# --- Tauri Specific ---
+src-tauri/gen/
+
+# --- Databases / Local Data ---
 data/
 pgdata/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+init.sql  # Optional: Only ignore if this contains sensitive setup data
+
+# --- Rust Backup files ---
+**/*.rs.bk
+
+documentation/
+
+# NOTE: We REMOVED Cargo.lock from here. 
+# It is better to commit it for Apps/Servers to ensure build stability.
