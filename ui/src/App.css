@@ -192,6 +192,53 @@ button { font-size: 14px; padding: 4px 8px; cursor: pointer; border-radius: 3px;
 }
 .button-row button.active { background-color: var(--accent-color); color: #ffffff; border-color: var(--accent-color); }
 button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+.tab-list.tree-view .tab-row {
+  border-left: 1px solid transparent;
+  transition: all 0.2s;
+}
+.tree-indicator {
+  opacity: 0.4;
+  margin-right: 8px;
+  font-family: monospace;
+}
+/* Optional: Add a subtle vertical line to show depth */
+.tab-list.tree-view .tab-row:not([style*="padding-left: 12px"]) {
+  border-left: 1px solid var(--border-color);
+  margin-left: 10px;
+}
+/* Tree View Specifics */
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab-icon {
+  opacity: 0.5;
+  font-size: 0.9em;
+  font-family: monospace;
+}
+
+.toggle-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-header);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.toggle-mode-btn.active {
+  background: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+}
 /* =========================
    5. EDITOR WRAPPER
 ========================= */

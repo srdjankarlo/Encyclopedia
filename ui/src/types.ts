@@ -4,7 +4,8 @@ export interface Tab {
   title: string;
   content: string;
   createdAt: number;
-  parentId?: string;
+  parentId?: string | null;
+  child_window_id?: string;
 }
 
 export interface WindowData {
