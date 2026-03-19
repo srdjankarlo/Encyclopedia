@@ -567,7 +567,7 @@ export default function App() {
 
                           // 2. Sync Miller View: Build the path from this tab up to the root
                           const newPath = ['root'];
-                          let current = tab;
+                          let current: any = tab;
                           const pathTrace = [];
                           
                           // Trace parents upwards
