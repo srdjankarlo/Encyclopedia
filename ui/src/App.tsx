@@ -30,7 +30,7 @@ export default function App() {
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   
   // --- UI STATE ---
-  const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
+  const [globalSearch, setGlobalSearch] = useState("");
   const [globalSortMode, setGlobalSortMode] = useState<SortMode>('oldest');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('theme') === 'dark');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -331,6 +331,7 @@ export default function App() {
       <div className="miller-columns">
         {activePath.map((winId, index) => {
           const win = windows[winId];
+          if (!win) return null;
           let windowName = 'LIBRARY';
           if (winId !== 'root') {
             // We look through all windows to find the tab whose ID matches this window's ID
@@ -342,12 +343,12 @@ export default function App() {
           }
           
           const isCollapsed = win.collapsed;
-          const query = searchQueries[winId]?.toLowerCase() || "";
+          // const query = searchQueries[winId]?.toLowerCase() || "";
           
           // Use the width from state, or default to 280 (or 40 if collapsed)
           const currentWidth = isCollapsed ? 40 : (win.width || 280);
 
-          const displayTabs = [...win.tabs].filter(t => t.title.toLowerCase().includes(query)).sort((a, b) => {
+          const displayTabs = [...win.tabs].filter(t => t.title.toLowerCase().includes(globalSearch.toLowerCase())).sort((a, b) => {
             if (globalSortMode === 'alpha') return a.title.localeCompare(b.title, undefined, { numeric: true });
             if (globalSortMode === 'alpha-desc') return b.title.localeCompare(a.title, undefined, { numeric: true });
             if (globalSortMode === 'newest') return b.createdAt - a.createdAt;
@@ -420,13 +421,15 @@ export default function App() {
                 </div>
                 {!isCollapsed && (
                   <>
-                    <div className="search-bar">
-                      <input 
-                        placeholder="Search..." 
-                        value={searchQueries[winId] || ""} 
-                        onChange={(e) => setSearchQueries(p => ({ ...p, [winId]: e.target.value }))} 
-                      />
-                    </div>
+                    {winId === 'root' && !isCollapsed && (
+                      <div className="search-bar">
+                        <input 
+                          placeholder="Search..." 
+                          value={globalSearch} 
+                          onChange={(e) => setGlobalSearch(e.target.value)} 
+                        />
+                      </div>
+                    )}
                     <div className="tab-list">
                       {displayTabs.map(tab => (
                         <div 
