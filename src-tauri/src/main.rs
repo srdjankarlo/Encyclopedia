@@ -50,7 +50,7 @@ async fn main() {
         .route("/health", get(|| async { "Backend is healthy!" }))
         .route("/tabs", get(get_tabs).post(save_tab))
         .route("/tabs/:id", delete(delete_tab))
-        .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(20 * 1024 * 1024))
         .layer(cors)
         .with_state(pool);
 

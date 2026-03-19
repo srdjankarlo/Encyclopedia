@@ -6,12 +6,12 @@ import { StarterKit } from '@tiptap/starter-kit';
 import { Heading } from '@tiptap/extension-heading';
 import { BulletList } from '@tiptap/extension-bullet-list';
 import { OrderedList } from '@tiptap/extension-ordered-list';
-import { ListItem } from '@tiptap/extension-list-item';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { Image } from '@tiptap/extension-image';
+import ImageResize from 'tiptap-extension-resize-image';
 import { Link } from '@tiptap/extension-link';
 
 import type { Tab, WindowData, SortMode, SaveStatus } from './types';
@@ -152,9 +152,39 @@ export default function App() {
       TaskItem.configure({
         nested: true,
       }),
-      Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList, ListItem,
+      Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList,
       Table.configure({ resizable: true, lastColumnResizable: true, allowTableNodeSelection: true}), TableRow, TableHeader, TableCell,
-      Image.configure({ allowBase64: true }), WikiLink,
+      Image.configure({
+        allowBase64: true,
+      }),
+      // Use 'as any' to bypass the property errors while keeping the logic intact
+      (ImageResize as any).configure({
+        // This allows the extension to "see" and "write" the width/height to the <img> tag
+        inline: false,
+        HTMLAttributes: {
+          class: 'resizable-image',
+        },
+        // Ensure it knows how to handle the data coming from the DB
+        addAttributes() {
+          return {
+            width: {
+              default: 'auto',
+              renderHTML: (attributes: any) => ({
+                width: attributes.width,
+              }),
+              parseHTML: (element: HTMLElement) => element.getAttribute('width'),
+            },
+            height: {
+              default: 'auto',
+              renderHTML: (attributes: any) => ({
+                height: attributes.height,
+              }),
+              parseHTML: (element: HTMLElement) => element.getAttribute('height'),
+            },
+          };
+        },
+      }),
+      WikiLink,
       Link.configure({ 
         openOnClick: false, autolink: false, 
         HTMLAttributes: { class: 'wiki-link', target: null, rel: null }

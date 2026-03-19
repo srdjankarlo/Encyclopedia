@@ -4,7 +4,7 @@ import { Editor } from '@tiptap/react';
 import { 
   Heading1, Heading2, Heading3, Type, Bold, Italic, Strikethrough, 
   List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
-  Columns, Rows, Trash2, Link as LinkIcon, CheckSquare, MinusSquare, PlusSquare
+  Columns, Rows, Trash2, Link as LinkIcon, CheckSquare, MinusSquare
 } from 'lucide-react';
 import type { WindowData, SaveStatus } from '../types';
 
@@ -25,7 +25,7 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
       const reader = new FileReader();
       reader.onload = (event) => {
         const base64 = event.target?.result as string;
-        editor.chain().focus().setImage({ src: base64 }).run();
+        (editor.chain().focus() as any).setImage({src: base64}).run();
       };
       reader.readAsDataURL(file);
     }
