@@ -29,11 +29,18 @@ export default function App() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   
+  // NEW: Editor visibility state
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  
   // --- UI STATE ---
   const [globalSearch, setGlobalSearch] = useState("");
   const [globalSortMode, setGlobalSortMode] = useState<SortMode>('oldest');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('theme') === 'dark');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isMillerMode, setIsMillerMode] = useState(true);
+  
+  // NEW: List view specific width state so it remembers stretching
+  const [listViewWidth, setListViewWidth] = useState(350);
   
   // --- SYNC STATE ---
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
@@ -42,15 +49,63 @@ export default function App() {
   const isInitialMount = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [isMillerMode, setIsMillerMode] = useState(true);
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: false, bulletList: false, orderedList: false, dropcursor: {} }),
+      TaskList, TaskItem.configure({ nested: true }),
+      Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList,
+      Table.configure({ resizable: true, lastColumnResizable: true, allowTableNodeSelection: true}), TableRow, TableHeader, TableCell,
+      (ImageResize as any).configure({
+        inline: false, allowBase64: true, HTMLAttributes: { class: 'resizable-image' },
+        addAttributes() {
+          return {
+            src: {}, alt: { default: null }, title: { default: null },
+            width: { default: 'auto', renderHTML: (attributes: any) => ({ width: attributes.width }), parseHTML: (element: HTMLElement) => element.getAttribute('width') || 'auto' },
+            height: { default: 'auto', renderHTML: (attributes: any) => ({ height: attributes.height }), parseHTML: (element: HTMLElement) => element.getAttribute('height') || 'auto' },
+          };
+        },
+      }),
+      WikiLink, Link.configure({ openOnClick: false, autolink: false, HTMLAttributes: { class: 'wiki-link', target: null, rel: null } }),
+    ],
+    content: '',
+    editorProps: {
+      handleDOMEvents: {
+        click: (_view, event) => {
+          const target = event.target as HTMLElement;
+          const wikiSpan = target.closest('.wiki-link');
+          if (wikiSpan) {
+            const tabId = wikiSpan.getAttribute('data-tab-id');
+            const tabExists = Object.values(windows).some(w => w.tabs.some(t => t.id === tabId));
+            if (!tabExists) {
+              wikiSpan.setAttribute('data-broken', 'true'); alert("This tab has been deleted and the link is broken."); return true;
+            }
+            handleInternalNavigation(tabId!); return true;
+          }
+          return false;
+        },
+      },
+    },
+    onUpdate: ({ editor }) => {
+      if (!activeTabId) return;
+      const html = editor.getHTML();
+      setWindows(prev => {
+        const next = { ...prev };
+        for (const winId in next) {
+          const tab = next[winId].tabs.find(t => t.id === activeTabId);
+          if (tab) { tab.content = html; break; }
+        }
+        return next;
+      });
+    },
+  });
 
-  // --- 1. THEME EFFECT ---
+  // --- THEME EFFECT ---
   useEffect(() => {
     document.body.classList.toggle('dark-theme', isDarkMode);
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // --- 2. DB LOAD EFFECT ---
+  // --- DB LOAD EFFECT ---
   useEffect(() => {
     const loadFromDb = async () => {
       try {
@@ -75,7 +130,7 @@ export default function App() {
     loadFromDb();
   }, []);
 
-  // --- 3. AUTO-SAVE EFFECT ---
+  // --- AUTO-SAVE EFFECT ---
   useEffect(() => {
     if (isInitialMount.current) { isInitialMount.current = false; return; }
     setSaveStatus('saving');
@@ -102,151 +157,157 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [windows]);
 
-  const getFlattenedTabs = (allTabs: Tab[], parentId: string | null = null, depth = 0): (Tab & { depth: number })[] => {
-    // 1. Find tabs belonging to this parent
-    const children = allTabs.filter(t => t.parentId === (parentId === 'root' ? null : parentId));
-    
-    // 2. Sort these specific children based on your active global mode
-    const sortedChildren = [...children].sort((a, b) => {
-      if (globalSortMode === 'alpha') return a.title.localeCompare(b.title, undefined, { numeric: true });
-      if (globalSortMode === 'alpha-desc') return b.title.localeCompare(a.title, undefined, { numeric: true });
-      if (globalSortMode === 'newest') return b.createdAt - a.createdAt;
-      return a.createdAt - b.createdAt; // default is 'oldest'
-    });
+  // --- HELPERS ---
+  const getFilteredAndSortedTabs = (tabs: Tab[]) => {
+    return [...tabs]
+      .filter(t => t.title.toLowerCase().includes(globalSearch.toLowerCase()))
+      .sort((a, b) => {
+        if (globalSortMode === 'alpha') return a.title.localeCompare(b.title, undefined, { numeric: true });
+        if (globalSortMode === 'alpha-desc') return b.title.localeCompare(a.title, undefined, { numeric: true });
+        if (globalSortMode === 'newest') return b.createdAt - a.createdAt;
+        return a.createdAt - b.createdAt; 
+      });
+  };
 
+  const getFlattenedTabs = (allTabs: Tab[], parentId: string | null = null, depth = 0): (Tab & { depth: number })[] => {
+    const children = allTabs.filter(t => t.parentId === (parentId === 'root' ? null : parentId));
+    const sortedChildren = getFilteredAndSortedTabs(children);
     let result: (Tab & { depth: number })[] = [];
-    
-    // 3. Loop through the *sorted* children to build the tree
     sortedChildren.forEach(child => {
       result.push({ ...child, depth });
-      // Recursively find, sort, and attach grandchildren
       const grandchildren = getFlattenedTabs(allTabs, child.id, depth + 1);
       result = [...result, ...grandchildren];
     });
-    
     return result;
   };
 
-  // --- EDITOR SETUP ---
-  const handleInternalNavigation = (tabId: string) => {
-    const getParentOfTab = (targetId: string): string | null => {
-      for (const winId in windows) {
-        if (windows[winId].tabs.some(t => t.id === targetId)) return winId;
+  const activateTab = (tab: Tab) => {
+    setActiveTabId(tab.id);
+    const newPath = ['root'];
+    let current: any = tab;
+    const pathTrace = [];
+    while (current && current.parentId) {
+      pathTrace.unshift(current.parentId);
+      const parentTab = Object.values(windows).flatMap(w => w.tabs).find(t => t.id === current.parentId);
+      current = parentTab as Tab;
+    }
+    if (!windows[tab.id]) {
+      setWindows(prev => ({ ...prev, [tab.id]: { id: tab.id, tabs: [], collapsed: false } }));
+    }
+    setActivePath([...newPath, ...pathTrace, tab.id]);
+  };
+
+  // --- GLOBAL KEYBOARD LOGIC ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInsideEditor = target.closest('.rich-editor');
+      const isInput = ['INPUT', 'TEXTAREA'].includes(target.tagName);
+
+      // 1. Ctrl + E: Toggle editor focus
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        if (isInsideEditor) {
+          (document.activeElement as HTMLElement)?.blur();
+          document.getElementById(`tab-row-${activeTabId}`)?.focus();
+        } else if (activeTabId) {
+          if (!isEditorOpen) setIsEditorOpen(true);
+          setTimeout(() => editor?.commands.focus('end'), 50);
+        }
+        return;
       }
-      return null;
+
+      // Ignore standard key presses if renaming a tab or typing in an input
+      if (editingTabId || (isInput && !isInsideEditor)) return;
+
+      // 2. Action Shortcuts (F2, Delete, Enter)
+      if (activeTabId && !isInsideEditor) {
+        if (e.key === 'F2') {
+          e.preventDefault();
+          setEditingTabId(activeTabId);
+          return;
+        }
+        if (e.key === 'Delete') {
+          e.preventDefault();
+          const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === activeTabId));
+          if (winId) deleteTab(winId, activeTabId);
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          setIsEditorOpen(prev => !prev);
+          return;
+        }
+      }
+
+      // 3. Arrow Navigation
+      const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+      if (isArrow && !isInsideEditor) {
+        e.preventDefault();
+
+        // Jump to active if none is focused
+        if (!activeTabId) {
+          const rootTabs = getFilteredAndSortedTabs(windows['root']?.tabs || []);
+          if (rootTabs.length > 0) activateTab(rootTabs[0]);
+          return;
+        }
+
+        const allTabs = Object.values(windows).flatMap(w => w.tabs);
+        let nextTab: Tab | undefined;
+
+        if (!isMillerMode) {
+          const flat = getFlattenedTabs(allTabs).filter(t => t.title.toLowerCase().includes(globalSearch.toLowerCase()));
+          const idx = flat.findIndex(t => t.id === activeTabId);
+          if (e.key === 'ArrowDown' && idx >= 0 && idx < flat.length - 1) nextTab = flat[idx + 1];
+          if (e.key === 'ArrowUp' && idx > 0) nextTab = flat[idx - 1];
+        } else {
+          const currentWinId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === activeTabId)) || 'root';
+          const currentTabs = getFilteredAndSortedTabs(windows[currentWinId]?.tabs || []);
+          const idx = currentTabs.findIndex(t => t.id === activeTabId);
+
+          if (e.key === 'ArrowDown' && idx >= 0 && idx < currentTabs.length - 1) nextTab = currentTabs[idx + 1];
+          if (e.key === 'ArrowUp' && idx > 0) nextTab = currentTabs[idx - 1];
+          if (e.key === 'ArrowRight') {
+            const childWin = windows[activeTabId];
+            if (childWin?.tabs.length > 0) nextTab = getFilteredAndSortedTabs(childWin.tabs)[0];
+          }
+          if (e.key === 'ArrowLeft' && currentWinId !== 'root') {
+            nextTab = allTabs.find(t => t.id === currentWinId);
+          }
+        }
+
+        if (nextTab) {
+          activateTab(nextTab);
+          setTimeout(() => document.getElementById(`tab-row-${nextTab!.id}`)?.focus(), 10);
+        }
+      }
     };
 
-    const pathSteps: string[] = [];
-    let currentId: string | null = tabId;
-    while (currentId && currentId !== 'root') {
-      const parentId = getParentOfTab(currentId);
-      if (parentId) { pathSteps.unshift(parentId); currentId = parentId; } 
-      else { currentId = null; }
-    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTabId, isEditorOpen, windows, isMillerMode, editingTabId, editor, globalSearch, globalSortMode]);
 
-    setActivePath(pathSteps.length > 0 ? pathSteps : ['root']);
-    setActiveTabId(tabId);
-
+  // --- EDITOR SETUP ---
+  const handleInternalNavigation = (tabId: string) => {
+    activateTab({ id: tabId } as Tab); // Rough mock to trigger trace
     setTimeout(() => {
-      const element = document.getElementById(`tab-${tabId}`);
+      const element = document.getElementById(`tab-row-${tabId}`);
       if (element) {
-        element.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         element.classList.add('teleport-flash');
         setTimeout(() => element.classList.remove('teleport-flash'), 1500);
       }
     }, 200);
   };
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: false, bulletList: false, orderedList: false, dropcursor: {} }),
-      TaskList,
-      TaskItem.configure({
-        nested: true,
-      }),
-      Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList,
-      Table.configure({ resizable: true, lastColumnResizable: true, allowTableNodeSelection: true}), TableRow, TableHeader, TableCell,
-      // Use 'as any' to bypass the property errors while keeping the logic intact
-      (ImageResize as any).configure({
-        inline: false,
-        allowBase64: true, // Most resize extensions pass this to the base image logic
-        HTMLAttributes: {
-          class: 'resizable-image',
-        },
-        addAttributes() {
-          return {
-            src: {},
-            alt: { default: null },
-            title: { default: null },
-            width: {
-              default: 'auto',
-              renderHTML: (attributes: any) => ({
-                width: attributes.width,
-              }),
-              parseHTML: (element: HTMLElement) => element.getAttribute('width') || 'auto',
-            },
-            height: {
-              default: 'auto',
-              renderHTML: (attributes: any) => ({
-                height: attributes.height,
-              }),
-              parseHTML: (element: HTMLElement) => element.getAttribute('height') || 'auto',
-            },
-          };
-        },
-      }),
-      WikiLink,
-      Link.configure({ 
-        openOnClick: false, autolink: false, 
-        HTMLAttributes: { class: 'wiki-link', target: null, rel: null }
-      }),
-    ],
-    content: '',
-    editorProps: {
-      handleDOMEvents: {
-        click: (_view, event) => {
-          const target = event.target as HTMLElement;
-          const wikiSpan = target.closest('.wiki-link');
-          if (wikiSpan) {
-            const tabId = wikiSpan.getAttribute('data-tab-id');
-            const tabExists = Object.values(windows).some(w => w.tabs.some(t => t.id === tabId));
-            if (!tabExists) {
-              wikiSpan.setAttribute('data-broken', 'true');
-              alert("This tab has been deleted and the link is broken.");
-              return true;
-            }
-            handleInternalNavigation(tabId!);
-            return true;
-          }
-          return false;
-        },
-      },
-    },
-    onUpdate: ({ editor }) => {
-      if (!activeTabId) return;
-      const html = editor.getHTML();
-      setWindows(prev => {
-        const next = { ...prev };
-        for (const winId in next) {
-          const tab = next[winId].tabs.find(t => t.id === activeTabId);
-          if (tab) { tab.content = html; break; }
-        }
-        return next;
-      });
-    },
-  });
-
-  // Keep editor state synced with React state
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!editor) return;
     const updateHandler = () => setTick(t => t + 1);
-    editor.on('selectionUpdate', updateHandler);
-    editor.on('transaction', updateHandler);
+    editor.on('selectionUpdate', updateHandler); editor.on('transaction', updateHandler);
     return () => { editor.off('selectionUpdate', updateHandler); editor.off('transaction', updateHandler); };
   }, [editor]);
 
-  // Sync content when active tab changes
   useEffect(() => {
     if (editor && activeTabId) {
       let content = "";
@@ -258,17 +319,13 @@ export default function App() {
     }
   }, [activeTabId, editor, windows]);
 
-  // Broken Link scanner
   useEffect(() => {
     const scanLinks = () => {
       const existingIds = new Set(Object.values(windows).flatMap(w => w.tabs.map(t => t.id)));
       document.querySelectorAll('.wiki-link').forEach(link => {
         const id = link.getAttribute('data-tab-id');
-        if (id && !existingIds.has(id)) {
-          link.classList.add('is-broken'); link.setAttribute('data-broken', 'true');
-        } else {
-          link.classList.remove('is-broken'); link.removeAttribute('data-broken');
-        }
+        if (id && !existingIds.has(id)) { link.classList.add('is-broken'); link.setAttribute('data-broken', 'true'); } 
+        else { link.classList.remove('is-broken'); link.removeAttribute('data-broken'); }
       });
     };
     scanLinks();
@@ -280,9 +337,7 @@ export default function App() {
   const addTab = async (windowId: string) => {
     const win = windows[windowId];
     if (!win) return;
-    
     const info = windowId === 'root' ? { fullPath: "New Tab" } : { fullPath: windows[Object.keys(windows).find(k => windows[k].tabs.some(t => t.id === windowId)) || 'root']?.tabs.find(t => t.id === windowId)?.title || "Sub" };
-    
     let maxNum = 0;
     win.tabs.forEach(t => {
       const parts = t.title.split('.');
@@ -300,19 +355,10 @@ export default function App() {
       ...prev, 
       [windowId]: { 
         ...prev[windowId], 
-        tabs: [...prev[windowId].tabs, { 
-          id: newId, 
-          title: newTitle, 
-          content: '', 
-          createdAt: Date.now(),
-          // FIX: Add parentId so the List View knows where to put it
-          parentId: windowId === 'root' ? null : windowId 
-        }] 
+        tabs: [...prev[windowId].tabs, { id: newId, title: newTitle, content: '', createdAt: Date.now(), parentId: windowId === 'root' ? null : windowId }] 
       },
       [newId]: { id: newId, tabs: [], collapsed: false }
     }));
-
-    // FIX: Return the ID so the UI can auto-select it
     return newId;
   };
 
@@ -323,10 +369,7 @@ export default function App() {
 
     const collectAndKill = (id: string) => {
       idsToRemove.add(id);
-      if (next[id]) {
-        next[id].tabs.forEach(child => collectAndKill(child.id));
-        delete next[id];
-      }
+      if (next[id]) { next[id].tabs.forEach(child => collectAndKill(child.id)); delete next[id]; }
     };
     collectAndKill(tabId);
     if (next[windowId]) next[windowId].tabs = next[windowId].tabs.filter(t => t.id !== tabId);
@@ -380,7 +423,7 @@ export default function App() {
 
   const activeBranchIds = activePath.map(winId => {
     for (const pid in windows) {
-      const parentTab = windows[pid].tabs.find(t => t.id === winId); // Fixed property to match parent/child relationship
+      const parentTab = windows[pid].tabs.find(t => t.id === winId); 
       if (parentTab) return parentTab.id;
     }
     return null;
@@ -390,60 +433,33 @@ export default function App() {
     <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}>
       <div className="miller-columns">
         {isMillerMode ? (
-          /* --- MODE 1: ORIGINAL MILLER COLUMNS (Restored from compare_1) --- */
+          /* --- MODE 1: MILLER COLUMNS --- */
           activePath.map((winId, index) => {
             const win = windows[winId];
             if (!win) return null;
             let windowName = 'LIBRARY';
             if (winId !== 'root') {
-              const parentTab = Object.values(windows)
-                .flatMap(w => w.tabs)
-                .find(t => t.id === winId);
+              const parentTab = Object.values(windows).flatMap(w => w.tabs).find(t => t.id === winId);
               windowName = parentTab ? parentTab.title.toUpperCase() : 'SUB-LEVEL';
             }
             
             const isCollapsed = win.collapsed;
             const currentWidth = isCollapsed ? 40 : (win.width || 280);
-
-            const displayTabs = [...win.tabs]
-              .filter(t => t.title.toLowerCase().includes(globalSearch.toLowerCase()))
-              .sort((a, b) => {
-                if (globalSortMode === 'alpha') return a.title.localeCompare(b.title, undefined, { numeric: true });
-                if (globalSortMode === 'alpha-desc') return b.title.localeCompare(a.title, undefined, { numeric: true });
-                if (globalSortMode === 'newest') return b.createdAt - a.createdAt;
-                return a.createdAt - b.createdAt;
-              });
+            const displayTabs = getFilteredAndSortedTabs(win.tabs);
 
             return (
               <ResizableBox 
                 key={winId} 
-                width={currentWidth} 
-                height={Infinity} 
-                axis="x" 
-                minConstraints={[isCollapsed ? 40 : 150, Infinity]}
-                maxConstraints={[600, Infinity]}
-                onResize={(_e, { size }) => {
-                  setWindows(p => ({
-                    ...p,
-                    [winId]: { ...p[winId], width: size.width, collapsed: size.width <= 60 }
-                  }));
-                }}
-                handle={
-                  <div 
-                    className="drag-handle" 
-                    onDoubleClick={() => setWindows(p => ({ 
-                      ...p, 
-                      [winId]: { ...p[winId], collapsed: !isCollapsed, width: isCollapsed ? 280 : 40 } 
-                    }))} 
-                  />
-                }
+                width={currentWidth} height={Infinity} axis="x" 
+                minConstraints={[isCollapsed ? 40 : 150, Infinity]} maxConstraints={[600, Infinity]}
+                onResize={(_e, { size }) => setWindows(p => ({ ...p, [winId]: { ...p[winId], width: size.width, collapsed: size.width <= 60 } }))}
+                handle={<div className="drag-handle" onDoubleClick={() => setWindows(p => ({ ...p, [winId]: { ...p[winId], collapsed: !isCollapsed, width: isCollapsed ? 280 : 40 } }))} />}
               >
                 <div className={`column ${isCollapsed ? 'collapsed' : ''}`} style={{ width: '100%' }}>
                   <div className="column-header">
                     <span className="header-title">{windowName}</span>
                     {!isCollapsed && winId === 'root' && (
                       <div className="header-controls">
-                        {/* Restored Global Sorting */}
                         <div className="control-section">
                           <span className="section-label">GLOBAL SORTING</span>
                           <div className="button-row">
@@ -453,12 +469,14 @@ export default function App() {
                             <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
                           </div>
                         </div>
-                        {/* Restored System Controls with Toggle Added */}
                         <div className="control-section">
                           <span className="section-label">SYSTEM</span>
                           <div className="button-row">
                             <button className="export-btn" disabled={win.tabs.length === 0} onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
                             <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
+                            <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
+                            <button className="toggle-mode-btn active" onClick={() => setIsMillerMode(false)}>VIEW: Miller columns</button>
+                            <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={handleImport} />
                             <button className="toggle-all-btn" onClick={() => setWindows(p => { 
                               const any = Object.entries(p).some(([id, w]) => id !== 'root' && !w.collapsed); 
                               const next = {...p}; 
@@ -467,9 +485,22 @@ export default function App() {
                             })}>
                               {Object.values(windows).some(w => w.id !== 'root' && !w.collapsed) ? 'COLLAPSE ALL' : 'EXPAND ALL'}
                             </button>
-                            <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
-                            <button className="toggle-mode-btn" onClick={() => setIsMillerMode(false)}>LIST VIEW</button>
-                            <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={handleImport} />
+                          </div>
+                        </div>
+                        <div className="controls-dashboard">
+                          <div className="dash-column">
+                            <span><strong>TAB:</strong> Header controls</span>
+                            <span><strong>SPACE:</strong> Select control</span>
+                          </div>
+                          <div className="dash-column">
+                            <span><strong>ARROWS:</strong> Navigate tabs</span>
+                            <span><strong>ENTER:</strong> Open/Activate tab</span>
+                          </div>
+                          <div className="dash-column">
+                            <span><strong>F2:</strong> Rename Tab</span>
+                            <span><strong>DEL:</strong> Delete Tab</span>
+                            <span><strong>CTRL+A:</strong> Add Child Tab</span>
+                            <span><strong>CTRL+E:</strong> Focus Editor</span>
                           </div>
                         </div>
                       </div>
@@ -485,14 +516,13 @@ export default function App() {
                       <div className="tab-list">
                         {displayTabs.map(tab => (
                           <div 
-                            key={tab.id} 
+                            key={tab.id} id={`tab-row-${tab.id}`} tabIndex={-1}
                             className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${activeBranchIds.includes(tab.id) ? 'branch-active' : ''}`} 
                             onClick={() => handleTabClick(winId, tab, index)}
                           >
                             {editingTabId === tab.id ? (
                               <input 
-                                autoFocus 
-                                value={tab.title} 
+                                autoFocus value={tab.title} 
                                 onBlur={() => setEditingTabId(null)} 
                                 onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditingTabId(null); } }} 
                                 onChange={(e) => { 
@@ -504,12 +534,13 @@ export default function App() {
                               />
                             ) : ( <span className="tab-title">{tab.title}</span> )}
                             <div className="tab-actions">
-                              <button className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
-                              <button className="del-btn" onClick={(e) => { e.stopPropagation(); deleteTab(winId, tab.id); }}>✕</button>
+                              {/* Removed tabIndex for actions so they are skipped by TAB */}
+                              <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
+                              <button tabIndex={-1} className="del-btn" onClick={(e) => { e.stopPropagation(); deleteTab(winId, tab.id); }}>✕</button>
                             </div>
                           </div>
                         ))}
-                        <button className="add-btn" onClick={() => addTab(winId)}>+ Add Item</button>
+                        <button tabIndex={-1} className="add-btn" onClick={() => addTab(winId)}>+ Add Item</button>
                       </div>
                     </>
                   )}
@@ -518,8 +549,14 @@ export default function App() {
             );
           })
         ) : (
-          /* --- MODE 2: LIST VIEW (Refined Add Logic) --- */
-          <ResizableBox width={350} height={Infinity} axis="x" handle={<div className="drag-handle" />}>
+          /* --- MODE 2: LIST VIEW --- */
+          /* FIX 1: Use state for width so List View remembers resizing */
+          <ResizableBox 
+            width={listViewWidth} height={Infinity} axis="x" 
+            onResize={(_e, { size }) => setListViewWidth(size.width)}
+            minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]}
+            handle={<div className="drag-handle" />}
+          >
             <div className="column" style={{ width: '100%' }}>
               <div className="column-header">
                 <span className="header-title">FULL LIBRARY</span>
@@ -539,18 +576,30 @@ export default function App() {
                       <button className="export-btn" onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
                       <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
                       <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙' : '☀️'}</button>
-                      <button className="toggle-mode-btn active" onClick={() => setIsMillerMode(true)}>MILLER VIEW</button>
+                      <button className="toggle-mode-btn active" onClick={() => setIsMillerMode(true)}>VIEW: List</button>
+                    </div>
+                  </div>
+                  <div className="controls-dashboard">
+                    <div className="dash-column">
+                      <span><strong>TAB:</strong> Header controls</span>
+                      <span><strong>SPACE:</strong> Select control</span>
+                    </div>
+                    <div className="dash-column">
+                      <span><strong>ARROWS:</strong> Navigate tabs</span>
+                      <span><strong>ENTER:</strong> Open/Activate tab</span>
+                    </div>
+                    <div className="dash-column">
+                      <span><strong>F2:</strong> Rename Tab</span>
+                      <span><strong>DEL:</strong> Delete Tab</span>
+                      <span><strong>CTRL+A:</strong> Add Child Tab</span>
+                      <span><strong>CTRL+E:</strong> Focus Editor</span>
                     </div>
                   </div>
                 </div>
               </div>
               
               <div className="search-bar">
-                <input 
-                  placeholder="Search all items..." 
-                  value={globalSearch} 
-                  onChange={(e) => setGlobalSearch(e.target.value)} 
-                />
+                <input placeholder="Search all items..." value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} />
               </div>
 
               <div className="tab-list tree-view">
@@ -558,38 +607,16 @@ export default function App() {
                   .filter(t => t.title.toLowerCase().includes(globalSearch.toLowerCase()))
                   .map(tab => (
                     <div key={tab.id}>
-                      {/* Main Tab Row */}
                       <div 
+                        id={`tab-row-${tab.id}`} tabIndex={-1}
                         className={`tab-row ${activeTabId === tab.id ? 'active' : ''}`}
-                        onClick={() => {
-                          // 1. Set the active tab for the editor
-                          setActiveTabId(tab.id);
-
-                          // 2. Sync Miller View: Build the path from this tab up to the root
-                          const newPath = ['root'];
-                          let current: any = tab;
-                          const pathTrace = [];
-                          
-                          // Trace parents upwards
-                          while (current && current.parentId) {
-                            pathTrace.unshift(current.parentId);
-                            // Find the parent object to keep tracing
-                            const parentTab = Object.values(windows)
-                              .flatMap(w => w.tabs)
-                              .find(t => t.id === current.parentId);
-                            current = parentTab as Tab;
-                          }
-                          
-                          // Update activePath so Miller View knows which columns to show
-                          setActivePath([...newPath, ...pathTrace, tab.id]);
-                        }}
+                        onClick={() => activateTab(tab)}
                         style={{ paddingLeft: `${(tab as any).depth * 20 + 12}px` }}
                       >
                         <span className="tree-indicator">{(tab as any).depth > 0 ? '↳' : '•'}</span>
                         {editingTabId === tab.id ? (
                           <input 
-                            autoFocus 
-                            value={tab.title} 
+                            autoFocus value={tab.title} 
                             onBlur={() => setEditingTabId(null)} 
                             onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} 
                             onChange={(e) => {
@@ -604,8 +631,8 @@ export default function App() {
                         ) : ( <span className="tab-title">{tab.title}</span> )}
                         
                         <div className="tab-actions">
-                          <button className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
-                          <button className="del-btn" onClick={(e) => { 
+                          <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
+                          <button tabIndex={-1} className="del-btn" onClick={(e) => { 
                             e.stopPropagation(); 
                             const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === tab.id));
                             if (winId) deleteTab(winId, tab.id);
@@ -613,24 +640,15 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Add Child Button: Appears directly under active item with increased indentation */}
                       {activeTabId === tab.id && (
-                        <div 
-                          className="tab-list-actions" 
-                          style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}
-                        >
-                          <button 
-                            className="add-btn" 
-                            onClick={async () => {
+                        <div className="tab-list-actions" style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}>
+                          <button tabIndex={-1} className="add-btn" onClick={async () => {
                               const newId = await addTab(tab.id);
                               if (newId) {
                                 setActiveTabId(newId);
-                                // Also update the path so the new child is visible in Miller View
                                 setActivePath(prev => [...prev, newId]);
                               }
-                            }}
-                          >
-                            + Add Child
+                            }}>+ Add Child
                           </button>
                         </div>
                       )}
@@ -638,7 +656,7 @@ export default function App() {
                   ))
                 }
                 <div className="root-footer">
-                  <button className="add-btn" onClick={async () => {
+                  <button tabIndex={-1} className="add-btn" onClick={async () => {
                       const newId = await addTab('root');
                       if (newId) setActiveTabId(newId);
                     }}> + Add New Root Item
@@ -649,9 +667,9 @@ export default function App() {
           </ResizableBox>
         )}
 
-        {/* Restored Writing Space and Footer Statistics */}
+        {/* --- THE EDITOR --- */}
         <div className="writing-space">
-          {activeTabId && editor ? (
+          {activeTabId && isEditorOpen && editor ? (
             <div className="editor-wrapper">
               <EditorToolbar editor={editor} windows={windows} saveStatus={saveStatus} lastSaved={lastSaved} handleManualRetry={() => setWindows(p => ({...p}))} />
               <EditorContent editor={editor} className="rich-editor" />
@@ -661,7 +679,15 @@ export default function App() {
                 <div className="stat">Lines: <span>{getEditorStats().lines}</span></div>
               </div>
             </div>
-          ) : <div className="empty-state">Select an item to edit content.</div>}
+          ) : (
+            <div className="empty-state">
+              {activeTabId ? (
+                <span>Editor hidden. Press <strong>ENTER</strong> to open.</span>
+              ) : (
+                "Select an item to view/edit content."
+              )}
+            </div>
+          )}
         </div>
       </div>
 

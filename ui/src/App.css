@@ -129,7 +129,18 @@ html, body {
   padding: 10px; cursor: pointer; border-bottom: 1px solid var(--border-color);
 }
 .tab-row:hover { background-color: var(--hover-color); }
-.tab-row:focus { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+.tab-row:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+  background-color: var(--hover-color);
+}
+
+/* Ensure global buttons get standard focus outline when navigating via TAB */
+button:focus-visible, 
+input:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
 .tab-row.active { 
   background-color: var(--accent-color);
   color: var(--bg-main); 
@@ -238,6 +249,36 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
   background: var(--accent-color);
   color: white;
   border-color: var(--accent-color);
+}
+/* =========================
+   CONTROLS DASHBOARD
+========================= */
+.controls-dashboard {
+  display: flex;
+  justify-content: space-between;
+  background-color: var(--bg-header);
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 15px;
+  margin-bottom: 15px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dash-column {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dash-column strong {
+  color: var(--text-main);
+  background-color: var(--bg-main);
+  padding: 2px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border-color);
+  font-family: monospace;
 }
 /* =========================
    5. EDITOR WRAPPER
