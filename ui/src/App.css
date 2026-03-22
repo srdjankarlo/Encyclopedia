@@ -415,8 +415,11 @@ ul[data-type="taskList"] li > div p {
 .rich-editor img { max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 10px 0; }
 .ProseMirror { 
   line-height: 1.6; font-size: 16px; outline: none;
-  white-space: pre-wrap !important;
   word-wrap: break-word;
+  /* Forces the browser to render the literal \t as a 4-space gap */
+  tab-size: 4; 
+  -moz-tab-size: 4; 
+  white-space: pre-wrap;
 }
 /* Highlight the image when selected so you know the handles should appear */
 .ProseMirror-selectednode.resizable-image {
@@ -534,3 +537,23 @@ ul[data-type="taskList"] li > div p {
 .search-results { margin-top: 4px; max-height: 150px; overflow-y: auto; }
 .search-item { padding: 8px; cursor: pointer; border-radius: 4px; font-size: 14px; color: var(--text-main); }
 .search-item:hover { background: var(--hover-color); color: var(--accent-color); }
+/* Highlighting matched search results */
+.tab-row.search-highlight {
+  background-color: rgba(255, 235, 59, 0.2); /* Soft yellow background */
+  border: 1px solid #fbc02d; /* Golden border */
+  border-radius: 4px;
+  animation: pulse-highlight 2s infinite;
+}
+
+/* Optional: Different highlight for dark theme */
+body.dark-theme .tab-row.search-highlight {
+  background-color: rgba(255, 214, 0, 0.15);
+  border-color: #ffd600;
+}
+
+/* Pulse animation to catch the eye */
+@keyframes pulse-highlight {
+  0% { box-shadow: 0 0 0 0px rgba(251, 192, 45, 0.4); }
+  70% { box-shadow: 0 0 0 4px rgba(251, 192, 45, 0); }
+  100% { box-shadow: 0 0 0 0px rgba(251, 192, 45, 0); }
+}
