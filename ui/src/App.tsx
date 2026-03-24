@@ -29,12 +29,12 @@ const CustomEditorShortcuts = Extension.create({
 
   addKeyboardShortcuts() {
     return {
-      // 1. Tab inserts an indent and prevents jumping through checkboxes/focus
+      // Tab inserts an indent and prevents jumping through checkboxes/focus
       'Tab': () => {
         return this.editor.commands.insertContent('\t');
       },
       
-      // 3. Move line/block up
+      // Move line/block up
       'Shift-Alt-ArrowUp': () => {
         const { state, dispatch } = this.editor.view;
         const { selection, tr } = state;
@@ -67,7 +67,7 @@ const CustomEditorShortcuts = Extension.create({
         return true;
       },
 
-      // 3. Move line/block down
+      // Move line/block down
       'Shift-Alt-ArrowDown': () => {
         const { state, dispatch } = this.editor.view;
         const { selection, tr } = state;
@@ -123,6 +123,9 @@ export default function App() {
   
   // NEW: List view specific width state so it remembers stretching
   const [listViewWidth, setListViewWidth] = useState(350);
+
+  // NEW: Track expanded items in List View
+  const [expandedListNodes, setExpandedListNodes] = useState<Set<string>>(new Set());
   
   // --- SYNC STATE ---
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
@@ -148,9 +151,19 @@ export default function App() {
           };
         },
       }),
-      WikiLink, Link.configure({ openOnClick: false, autolink: false, HTMLAttributes: { class: 'wiki-link', target: null, rel: null } }),
+      WikiLink,
+      // Link.configure({ openOnClick: false, autolink: false, HTMLAttributes: { class: 'wiki-link', target: null, rel: null } }),
+      // EXTERNAL WEB LINKS CONFIG
+      Link.configure({ 
+        openOnClick: true, // Allows clicking to open in browser
+        autolink: true,    // Auto-detects URLs
+        HTMLAttributes: { 
+          class: 'external-link', 
+          target: '_blank', 
+          rel: 'noopener noreferrer' 
+        } 
+      }),
     ],
-    content: '',
     editorProps: {
       handleDOMEvents: {
         click: (_view, event) => {
@@ -168,6 +181,7 @@ export default function App() {
         },
       },
     },
+    content: '',
     onUpdate: ({ editor }) => {
       if (!activeTabId) return;
       const html = editor.getHTML();
@@ -293,10 +307,17 @@ export default function App() {
     const children = allTabs.filter(t => t.parentId === (parentId === 'root' ? null : parentId));
     const sortedChildren = getFilteredAndSortedTabs(children);
     let result: (Tab & { depth: number })[] = [];
+    
+    // If the user is searching, force all branches open so matches are visible
+    const isSearchActive = globalSearch.trim() !== '';
+
     sortedChildren.forEach(child => {
       result.push({ ...child, depth });
-      const grandchildren = getFlattenedTabs(allTabs, child.id, depth + 1);
-      result = [...result, ...grandchildren];
+      // NEW: Only fetch grandchildren if this node is expanded or we are searching
+      if (isSearchActive || expandedListNodes.has(child.id)) {
+        const grandchildren = getFlattenedTabs(allTabs, child.id, depth + 1);
+        result = [...result, ...grandchildren];
+      }
     });
     return result;
   };
@@ -315,6 +336,9 @@ export default function App() {
       setWindows(prev => ({ ...prev, [tab.id]: { id: tab.id, tabs: [], collapsed: false } }));
     }
     setActivePath([...newPath, ...pathTrace, tab.id]);
+
+    // Auto-expand this node in List View so its children become visible
+    setExpandedListNodes(prev => new Set(prev).add(tab.id));
   };
 
   // --- EDITOR SETUP ---
@@ -549,7 +573,163 @@ export default function App() {
     <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}>
       <div className="miller-columns">
         {isMillerMode ? (
-          /* --- MODE 1: MILLER COLUMNS --- */
+          /* --- MODE: LIST VIEW --- */
+          /* Use state for width so List View remembers resizing */
+          <ResizableBox 
+            width={listViewWidth} height={Infinity} axis="x" 
+            onResize={(_e, { size }) => setListViewWidth(size.width)}
+            minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]}
+            handle={<div className="drag-handle" />}
+          >
+            <div className="column" style={{ width: '100%' }}>
+              <div className="column-header">
+                <span className="header-title">LIBRARY</span>
+                <div className="header-controls">
+                  <div className="control-section">
+                    <div className="controls-dashboard">
+                      <div className="dash-column">
+                        <span><strong>TAB:</strong> List header controls</span>
+                        <span><strong>SPACE:</strong> Select control</span>
+                      </div>
+                    </div>
+                    <span className="section-label">GLOBAL SORTING</span>
+                    <div className="button-row">
+                      <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>OLDEST</button>
+                      <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>NEWEST</button>
+                      <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
+                      <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
+                    </div>
+                  </div>
+                  <div className="control-section">
+                    <span className="section-label">SYSTEM</span>
+                    <div className="button-row">
+                      <button className="export-btn" onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
+                      <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
+                      <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
+                      <button className="toggle-mode-btn active" onClick={() => setIsMillerMode(false)}>VIEW: List</button>
+                      <button className="toggle-all-btn" onClick={() => { 
+                        const allTabs = Object.values(windows).flatMap(w => w.tabs);
+                        if (expandedListNodes.size > 0) {
+                          setExpandedListNodes(new Set()); // Collapse all
+                        } else {
+                          setExpandedListNodes(new Set(allTabs.map(t => t.id))); // Expand all
+                        }
+                      }}>
+                        {expandedListNodes.size > 0 ? 'COLLAPSE ALL' : 'EXPAND ALL'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="controls-dashboard">
+                    <div className="dash-column">
+                      <span><strong>F2:</strong> Rename Tab</span>
+                      <span><strong>DEL:</strong> Delete Tab</span>
+                      <span><strong>CTRL+A:</strong> Add Child Tab</span>
+                      <span><strong>CTRL+E:</strong> Focus/Unfocus Editor</span>
+                    </div>
+                    <div className="dash-column">
+                      <span><strong>ARROWS:</strong> Navigate tabs</span>
+                      <span><strong>ENTER:</strong> Open/Activate tab</span>
+                      <span><strong>CTRL+F:</strong> Find tabs and content in editor</span>
+                      <span><strong>ALT+SHIFT+Up/Down:</strong> Move text line up/down</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="search-bar">
+                <input placeholder="Search tabs..." value={globalSearch} onChange={handleSearch} />
+              </div>
+
+              <div className="tab-list tree-view">
+                <div className="root-footer">
+                  <button tabIndex={-1} className="add-btn" onClick={async () => {
+                      const newId = await addTab('root');
+                      if (newId) setActiveTabId(newId);
+                    }}> + Add New Root Item
+                  </button>
+                </div>
+                {getFlattenedTabs(Object.values(windows).flatMap(w => w.tabs))
+                  .map(tab => {
+                    const isSearchMatch = globalSearch.trim() !== '' && tab.title.toLowerCase().includes(globalSearch.toLowerCase());
+
+                    // Calculate if this tab has children to show the toggle arrow
+                    const allTabs = Object.values(windows).flatMap(w => w.tabs);
+                    const hasChildren = allTabs.some(t => t.parentId === tab.id);
+
+                    return (
+                      <div key={tab.id}>
+                        <div 
+                          id={`tab-row-${tab.id}`} tabIndex={-1}
+                          className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${isSearchMatch ? 'search-highlight' : ''}`}
+                          onClick={() => activateTab(tab)}
+                          style={{ paddingLeft: `${(tab as any).depth * 20 + 12}px` }}
+                        >
+                          {/* <span className="tree-indicator">{(tab as any).depth > 0 ? '↳' : '•'}</span> */}
+                          {/* NEW: Clickable Expand/Collapse Arrow */}
+                          <span 
+                            className="tree-indicator" 
+                            style={{ cursor: hasChildren ? 'pointer' : 'default' }}
+                            onClick={(e) => {
+                              if (hasChildren) {
+                                e.stopPropagation(); // Don't trigger the tab selection
+                                setExpandedListNodes(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(tab.id)) next.delete(tab.id);
+                                  else next.add(tab.id);
+                                  return next;
+                                });
+                              }
+                            }}
+                          >
+                            {hasChildren ? (expandedListNodes.has(tab.id) ? '▼' : '▶') : '•'}
+                          </span>
+                          {editingTabId === tab.id ? (
+                            <input 
+                              autoFocus value={tab.title} 
+                              onBlur={() => setEditingTabId(null)} 
+                              onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} 
+                              onChange={(e) => {
+                                const next = { ...windows };
+                                Object.keys(next).forEach(winId => {
+                                  const t = next[winId].tabs.find(i => i.id === tab.id);
+                                  if (t) t.title = e.target.value;
+                                });
+                                setWindows(next);
+                              }}
+                            />
+                          ) : ( <span className="tab-title">{tab.title}</span> )}
+                          
+                          <div className="tab-actions">
+                            <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
+                            <button tabIndex={-1} className="del-btn" onClick={(e) => { 
+                              e.stopPropagation(); 
+                              const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === tab.id));
+                              if (winId) deleteTab(winId, tab.id);
+                            }}>✕</button>
+                          </div>
+                        </div>
+
+                        {activeTabId === tab.id && (
+                          <div className="tab-list-actions" style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}>
+                            <button tabIndex={-1} className="add-btn" onClick={async () => {
+                                const newId = await addTab(tab.id);
+                                if (newId) {
+                                  setActiveTabId(newId);
+                                  setActivePath(prev => [...prev, newId]);
+                                }
+                              }}>+ Add Child
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                }
+              </div>
+            </div>
+          </ResizableBox>
+        ) : (
+          /* --- MODE: MILLER COLUMNS --- */
           activePath.map((winId, index) => {
             const win = windows[winId];
             if (!win) return null;
@@ -597,7 +777,7 @@ export default function App() {
                             <button className="export-btn" disabled={win.tabs.length === 0} onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
                             <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
                             <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
-                            <button className="toggle-mode-btn active" onClick={() => setIsMillerMode(false)}>VIEW: Miller columns</button>
+                            <button className="toggle-mode-btn active" onClick={() => setIsMillerMode(true)}>VIEW: Miller columns</button>
                             <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={handleImport} />
                             <button className="toggle-all-btn" onClick={() => setWindows(p => { 
                               const any = Object.entries(p).some(([id, w]) => id !== 'root' && !w.collapsed); 
@@ -619,6 +799,8 @@ export default function App() {
                           <div className="dash-column">
                             <span><strong>ARROWS:</strong> Navigate tabs</span>
                             <span><strong>ENTER:</strong> Open/Activate tab</span>
+                            <span><strong>CTRL+F:</strong> Find tabs and content in editor</span>
+                            <span><strong>ALT+SHIFT+Up/Down:</strong> Move text line up/down</span>
                           </div>
                         </div>
                       </div>
@@ -669,127 +851,6 @@ export default function App() {
               </ResizableBox>
             );
           })
-        ) : (
-          /* --- MODE 2: LIST VIEW --- */
-          /* FIX 1: Use state for width so List View remembers resizing */
-          <ResizableBox 
-            width={listViewWidth} height={Infinity} axis="x" 
-            onResize={(_e, { size }) => setListViewWidth(size.width)}
-            minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]}
-            handle={<div className="drag-handle" />}
-          >
-            <div className="column" style={{ width: '100%' }}>
-              <div className="column-header">
-                <span className="header-title">LIBRARY</span>
-                <div className="header-controls">
-                  <div className="control-section">
-                    <div className="controls-dashboard">
-                      <div className="dash-column">
-                        <span><strong>TAB:</strong> List header controls</span>
-                        <span><strong>SPACE:</strong> Select control</span>
-                      </div>
-                    </div>
-                    <span className="section-label">GLOBAL SORTING</span>
-                    <div className="button-row">
-                      <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>OLDEST</button>
-                      <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>NEWEST</button>
-                      <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
-                      <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
-                    </div>
-                  </div>
-                  <div className="control-section">
-                    <span className="section-label">SYSTEM</span>
-                    <div className="button-row">
-                      <button className="export-btn" onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
-                      <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
-                      <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
-                      <button className="toggle-mode-btn active" onClick={() => setIsMillerMode(true)}>VIEW: List</button>
-                    </div>
-                  </div>
-                  <div className="controls-dashboard">
-                    <div className="dash-column">
-                      <span><strong>F2:</strong> Rename Tab</span>
-                      <span><strong>DEL:</strong> Delete Tab</span>
-                      <span><strong>CTRL+A:</strong> Add Child Tab</span>
-                      <span><strong>CTRL+E:</strong> Focus/Unfocus Editor</span>
-                    </div>
-                    <div className="dash-column">
-                      <span><strong>ARROWS:</strong> Navigate tabs</span>
-                      <span><strong>ENTER:</strong> Open/Activate tab</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="search-bar">
-                <input placeholder="Search tabs..." value={globalSearch} onChange={handleSearch} />
-              </div>
-
-              <div className="tab-list tree-view">
-                {getFlattenedTabs(Object.values(windows).flatMap(w => w.tabs))
-                  .map(tab => {
-                    const isSearchMatch = globalSearch.trim() !== '' && tab.title.toLowerCase().includes(globalSearch.toLowerCase());
-                    return (
-                      <div key={tab.id}>
-                        <div 
-                          id={`tab-row-${tab.id}`} tabIndex={-1}
-                          className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${isSearchMatch ? 'search-highlight' : ''}`}
-                          onClick={() => activateTab(tab)}
-                          style={{ paddingLeft: `${(tab as any).depth * 20 + 12}px` }}
-                        >
-                          <span className="tree-indicator">{(tab as any).depth > 0 ? '↳' : '•'}</span>
-                          {editingTabId === tab.id ? (
-                            <input 
-                              autoFocus value={tab.title} 
-                              onBlur={() => setEditingTabId(null)} 
-                              onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} 
-                              onChange={(e) => {
-                                const next = { ...windows };
-                                Object.keys(next).forEach(winId => {
-                                  const t = next[winId].tabs.find(i => i.id === tab.id);
-                                  if (t) t.title = e.target.value;
-                                });
-                                setWindows(next);
-                              }}
-                            />
-                          ) : ( <span className="tab-title">{tab.title}</span> )}
-                          
-                          <div className="tab-actions">
-                            <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
-                            <button tabIndex={-1} className="del-btn" onClick={(e) => { 
-                              e.stopPropagation(); 
-                              const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === tab.id));
-                              if (winId) deleteTab(winId, tab.id);
-                            }}>✕</button>
-                          </div>
-                        </div>
-
-                        {activeTabId === tab.id && (
-                          <div className="tab-list-actions" style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}>
-                            <button tabIndex={-1} className="add-btn" onClick={async () => {
-                                const newId = await addTab(tab.id);
-                                if (newId) {
-                                  setActiveTabId(newId);
-                                  setActivePath(prev => [...prev, newId]);
-                                }
-                              }}>+ Add Child
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-                }
-                <div className="root-footer">
-                  <button tabIndex={-1} className="add-btn" onClick={async () => {
-                      const newId = await addTab('root');
-                      if (newId) setActiveTabId(newId);
-                    }}> + Add New Root Item
-                  </button>
-                </div>
-              </div>
-            </div>
-          </ResizableBox>
         )}
 
         {/* --- THE EDITOR --- */}

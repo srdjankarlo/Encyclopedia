@@ -134,7 +134,6 @@ html, body {
   outline-offset: -2px;
   background-color: var(--hover-color);
 }
-
 /* Ensure global buttons get standard focus outline when navigating via TAB */
 button:focus-visible, 
 input:focus-visible {
@@ -226,13 +225,11 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-color);
 }
-
 .tab-icon {
   opacity: 0.5;
   font-size: 0.9em;
   font-family: monospace;
 }
-
 .toggle-mode-btn {
   display: flex;
   align-items: center;
@@ -244,7 +241,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
   cursor: pointer;
   font-weight: 500;
 }
-
 .toggle-mode-btn.active {
   background: var(--accent-color);
   color: white;
@@ -265,13 +261,11 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
   font-size: 11px;
   color: var(--text-muted);
 }
-
 .dash-column {
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
-
 .dash-column strong {
   color: var(--text-main);
   background-color: var(--bg-main);
@@ -304,6 +298,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
 /* Checklist styling */
 /* Container for the whole list */
 ul[data-type="taskList"] {
+  /* display: flex; */
+  align-items: flex-start;   /*FIX: Align to top so it stays on first line*/
   list-style: none;
   padding: 0;
   margin: 1rem 0;
@@ -321,6 +317,8 @@ ul[data-type="taskList"] li > label {
   user-select: none;
   display: flex;             /* Internal centering for the input itself */
   align-items: center;
+  /* align-items: flex-start; */
+  margin-top: 4px;           /* FIX: slightly pushes checkbox down to center with text cap-height */
 }
 /* The checkbox itself */
 ul[data-type="taskList"] input[type="checkbox"] {
@@ -460,13 +458,11 @@ ul[data-type="taskList"] li > div p {
 }
 .stat span { color: var(--text-main); font-weight: bold; }
 .stat-right { margin-left: auto; border-left: 1px solid var(--border-color); padding-left: 20px; }
-
 .sync-indicator-container { display: flex; align-items: center; min-width: 150px; justify-content: flex-end; }
 .sync-indicator { font-size: 11px; font-weight: bold; }
 .sync-indicator.saving { color: #fd7e14; animation: pulse 1.5s infinite; }
 .sync-indicator.saved { color: #28a745; }
 .sync-indicator.error { color: var(--danger-color); }
-
 .saved-group, .error-group { display: flex; align-items: center; gap: 6px; }
 .save-time { font-size: 11px; opacity: 0.7; font-family: 'Courier New', Courier, monospace; }
 .retry-sync-btn { background: #e74c3c; color: white; border: none; padding: 2px 8px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
@@ -544,16 +540,51 @@ ul[data-type="taskList"] li > div p {
   border-radius: 4px;
   animation: pulse-highlight 2s infinite;
 }
-
 /* Optional: Different highlight for dark theme */
 body.dark-theme .tab-row.search-highlight {
   background-color: rgba(255, 214, 0, 0.15);
   border-color: #ffd600;
 }
-
 /* Pulse animation to catch the eye */
 @keyframes pulse-highlight {
   0% { box-shadow: 0 0 0 0px rgba(251, 192, 45, 0.4); }
   70% { box-shadow: 0 0 0 4px rgba(251, 192, 45, 0); }
   100% { box-shadow: 0 0 0 0px rgba(251, 192, 45, 0); }
+}
+/* =========================
+   EXTERNAL WEB LINKS
+========================= */
+.external-link {
+  color: #3b82f6; /* Distinct blue */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.external-link:hover {
+  opacity: 0.8;
+}
+/* Adds a standard "globe/web" icon after external links */
+.external-link::after {
+  content: " 🌐";
+  font-size: 0.85em;
+  display: inline-block;
+  margin-left: 2px;
+  text-decoration: none;
+}
+/* FIX: Checkbox stays on the first line */
+.tiptap ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start; /* Changed from center to flex-start */
+  margin-bottom: 0.5rem;
+}
+.tiptap ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  user-select: none;
+  margin-right: 0.5rem;
+  /* Add a small top margin to center the checkbox with the first line of text */
+  margin-top: 0.2rem; 
+}
+.tiptap ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
 }

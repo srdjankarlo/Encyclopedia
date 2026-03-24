@@ -75,12 +75,36 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
           {editor.isActive('table') && (
             <>
               <div className="tool-separator" />
-              <button onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Before"><Columns size={18} /></button>
-              <button onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column After"><Columns size={18} /></button>
+              <button onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Before">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="6" height="16" fill="currentColor" /> {/* Highlight left */}
+                  <rect x="3" y="4" width="18" height="16" />
+                  <line x1="15" y1="4" x2="15" y2="20" />
+                </svg>
+              </button>
+              <button onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column After">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="15" y="4" width="6" height="16" fill="currentColor" /> {/* Highlight right */}
+                  <rect x="3" y="4" width="18" height="16" />
+                  <line x1="9" y1="4" x2="9" y2="20" />
+                </svg>
+              </button>
               <button onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Column" style={{color: '#ff4d4d'}}><MinusSquare size={18} /></button>
               <div className="tool-separator" />
-              <button onClick={() => editor.chain().focus().addRowBefore().run()} title="Add Row Before"><Rows size={18} /></button>
-              <button onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row After"><Rows size={18} /></button>
+              <button onClick={() => editor.chain().focus().addRowBefore().run()} title="Add Row Before">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="4" y="3" width="16" height="6" fill="currentColor" /> {/* Highlight top */}
+                  <rect x="4" y="3" width="16" height="18" />
+                  <line x1="4" y1="15" x2="20" y2="15" />
+                </svg>
+              </button>
+              <button onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row After">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="4" y="15" width="16" height="6" fill="currentColor" /> {/* Highlight bottom */}
+                  <rect x="4" y="3" width="16" height="18" />
+                  <line x1="4" y1="9" x2="20" y2="9" />
+                </svg>
+              </button>
               <button onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row" style={{color: '#ff4d4d'}}><MinusSquare size={18} /></button>
               <div className="tool-separator" />
               <button onClick={() => editor.chain().focus().deleteTable().run()} style={{color: '#ff4d4d'}} title="Delete Table"><Trash2 size={18} /></button>
