@@ -107,7 +107,6 @@ const CustomEditorShortcuts = Extension.create({
 export default function App() {
   // --- CORE STATE ---
   const [windows, setWindows] = useState<Record<string, WindowData>>({ 'root': { id: 'root', tabs: [] } });
-  const [activePath, setActivePath] = useState<string[]>(['root']);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   
@@ -119,7 +118,6 @@ export default function App() {
   const [globalSortMode, setGlobalSortMode] = useState<SortMode>('oldest');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('theme') === 'dark');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isMillerMode, setIsMillerMode] = useState(true);
   
   // NEW: List view specific width state so it remembers stretching
   const [listViewWidth, setListViewWidth] = useState(350);
@@ -238,20 +236,8 @@ export default function App() {
     if (next[windowId]) next[windowId].tabs = next[windowId].tabs.filter(t => t.id !== tabId);
 
     setWindows(next);
-    setActivePath(prev => prev.filter(id => id === 'root' || next[id]));
     if (activeTabId && idsToRemove.has(activeTabId)) setActiveTabId(null);
     try { await fetch(`${API_URL}/tabs/${tabId}`, { method: 'DELETE' }); } catch (e) { console.error(e); }
-  };
-
-  const handleTabClick = (_windowId: string, tab: Tab, index: number) => {
-    setActiveTabId(tab.id);
-    if (activePath[index + 1] === tab.id) {
-      setActivePath(activePath.slice(0, index + 1));
-      if (activeTabId === tab.id) setActiveTabId(null);
-    } else {
-      if (!windows[tab.id]) setWindows(prev => ({ ...prev, [tab.id]: { id: tab.id, tabs: [], collapsed: false } }));
-      setActivePath([...activePath.slice(0, index + 1), tab.id]);
-    }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -283,14 +269,6 @@ export default function App() {
     const text = editor.getText();
     return { chars: text.length, words: text.trim() ? text.trim().split(/\s+/).length : 0, lines: text.split(/\r\n|\r|\n/).length };
   };
-
-  const activeBranchIds = activePath.map(winId => {
-    for (const pid in windows) {
-      const parentTab = windows[pid].tabs.find(t => t.id === winId); 
-      if (parentTab) return parentTab.id;
-    }
-    return null;
-  }).filter(Boolean);
 
   // --- HELPERS ---
   const getFilteredAndSortedTabs = (tabs: Tab[]) => {
@@ -324,21 +302,6 @@ export default function App() {
 
   const activateTab = (tab: Tab) => {
     setActiveTabId(tab.id);
-    const newPath = ['root'];
-    let current: any = tab;
-    const pathTrace = [];
-    while (current && current.parentId) {
-      pathTrace.unshift(current.parentId);
-      const parentTab = Object.values(windows).flatMap(w => w.tabs).find(t => t.id === current.parentId);
-      current = parentTab as Tab;
-    }
-    if (!windows[tab.id]) {
-      setWindows(prev => ({ ...prev, [tab.id]: { id: tab.id, tabs: [], collapsed: false } }));
-    }
-    setActivePath([...newPath, ...pathTrace, tab.id]);
-
-    // Auto-expand this node in List View so its children become visible
-    setExpandedListNodes(prev => new Set(prev).add(tab.id));
   };
 
   // --- EDITOR SETUP ---
@@ -491,26 +454,51 @@ export default function App() {
         }
 
         const allTabs = Object.values(windows).flatMap(w => w.tabs);
+        const activeTab = allTabs.find(t => t.id === activeTabId);
+        if (!activeTab) return;
+
+        const hasChildren = allTabs.some(t => t.parentId === activeTab.id);
+        const isExpanded = expandedListNodes.has(activeTab.id);
+        const searchLower = globalSearch.toLowerCase().trim();
+
         let nextTab: Tab | undefined;
 
-        if (!isMillerMode) {
-          const flat = getFlattenedTabs(allTabs).filter(t => t.title.toLowerCase().includes(globalSearch.toLowerCase()));
-          const idx = flat.findIndex(t => t.id === activeTabId);
-          if (e.key === 'ArrowDown' && idx >= 0 && idx < flat.length - 1) nextTab = flat[idx + 1];
-          if (e.key === 'ArrowUp' && idx > 0) nextTab = flat[idx - 1];
-        } else {
-          const currentWinId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === activeTabId)) || 'root';
-          const currentTabs = getFilteredAndSortedTabs(windows[currentWinId]?.tabs || []);
-          const idx = currentTabs.findIndex(t => t.id === activeTabId);
+        // Helper to get correctly sorted & filtered siblings/children
+        const getVisible = (parentId: string | null) => 
+          getFilteredAndSortedTabs(allTabs.filter(t => t.parentId === parentId))
+            .filter(t => searchLower === '' || t.title.toLowerCase().includes(searchLower));
 
-          if (e.key === 'ArrowDown' && idx >= 0 && idx < currentTabs.length - 1) nextTab = currentTabs[idx + 1];
-          if (e.key === 'ArrowUp' && idx > 0) nextTab = currentTabs[idx - 1];
-          if (e.key === 'ArrowRight') {
-            const childWin = windows[activeTabId];
-            if (childWin?.tabs.length > 0) nextTab = getFilteredAndSortedTabs(childWin.tabs)[0];
+        if (e.key === 'ArrowDown') {
+          const siblings = getVisible(activeTab.parentId ?? null);
+          const idx = siblings.findIndex(t => t.id === activeTab.id);
+          if (idx >= 0 && idx < siblings.length - 1) nextTab = siblings[idx + 1];
+        } 
+        else if (e.key === 'ArrowUp') {
+          const siblings = getVisible(activeTab.parentId ?? null);
+          const idx = siblings.findIndex(t => t.id === activeTab.id);
+          if (idx > 0) nextTab = siblings[idx - 1];
+        }
+        else if (e.key === 'ArrowRight') {
+          if (hasChildren && !isExpanded) {
+            // 1. Expand children if collapsed
+            setExpandedListNodes(prev => new Set(prev).add(activeTab.id));
+          } else if (hasChildren && isExpanded) {
+            // 2. Move to first child if already expanded
+            const children = getVisible(activeTab.id);
+            if (children.length > 0) nextTab = children[0];
           }
-          if (e.key === 'ArrowLeft' && currentWinId !== 'root') {
-            nextTab = allTabs.find(t => t.id === currentWinId);
+        }
+        else if (e.key === 'ArrowLeft') {
+          if (hasChildren && isExpanded) {
+            // 1. Collapse children if expanded
+            setExpandedListNodes(prev => {
+              const next = new Set(prev);
+              next.delete(activeTab.id);
+              return next;
+            });
+          } else if (activeTab.parentId) {
+            // 2. Move to parent if already collapsed (or leaf node)
+            nextTab = allTabs.find(t => t.id === activeTab.parentId);
           }
         }
 
@@ -523,7 +511,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTabId, isEditorOpen, windows, isMillerMode, editingTabId, editor, globalSearch, globalSortMode]);
+  }, [activeTabId, isEditorOpen, windows, editingTabId, editor, globalSearch, globalSortMode, expandedListNodes]);
 
   useEffect(() => {
     if (editor && activeTabId) {
@@ -572,286 +560,158 @@ export default function App() {
   return (
     <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}>
       <div className="miller-columns">
-        {isMillerMode ? (
-          /* --- MODE: LIST VIEW --- */
-          /* Use state for width so List View remembers resizing */
-          <ResizableBox 
-            width={listViewWidth} height={Infinity} axis="x" 
-            onResize={(_e, { size }) => setListViewWidth(size.width)}
-            minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]}
-            handle={<div className="drag-handle" />}
-          >
-            <div className="column" style={{ width: '100%' }}>
-              <div className="column-header">
-                <span className="header-title">LIBRARY</span>
-                <div className="header-controls">
-                  <div className="control-section">
-                    <div className="controls-dashboard">
-                      <div className="dash-column">
-                        <span><strong>TAB:</strong> List header controls</span>
-                        <span><strong>SPACE:</strong> Select control</span>
-                      </div>
-                    </div>
-                    <span className="section-label">GLOBAL SORTING</span>
-                    <div className="button-row">
-                      <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>OLDEST</button>
-                      <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>NEWEST</button>
-                      <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
-                      <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
-                    </div>
-                  </div>
-                  <div className="control-section">
-                    <span className="section-label">SYSTEM</span>
-                    <div className="button-row">
-                      <button className="export-btn" onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
-                      <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
-                      <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
-                      <button className="toggle-mode-btn active" onClick={() => setIsMillerMode(false)}>VIEW: List</button>
-                      <button className="toggle-all-btn" onClick={() => { 
-                        const allTabs = Object.values(windows).flatMap(w => w.tabs);
-                        if (expandedListNodes.size > 0) {
-                          setExpandedListNodes(new Set()); // Collapse all
-                        } else {
-                          setExpandedListNodes(new Set(allTabs.map(t => t.id))); // Expand all
-                        }
-                      }}>
-                        {expandedListNodes.size > 0 ? 'COLLAPSE ALL' : 'EXPAND ALL'}
-                      </button>
-                    </div>
-                  </div>
+        {/* /* Use state for width so List View remembers resizing */}
+        <ResizableBox 
+          width={listViewWidth} height={Infinity} axis="x" 
+          onResize={(_e, { size }) => setListViewWidth(size.width)}
+          minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]}
+          handle={<div className="drag-handle" />}
+        >
+          <div className="column" style={{ width: '100%' }}>
+            <div className="column-header">
+              <span className="header-title">LIBRARY</span>
+              <div className="header-controls">
+                <div className="control-section">
                   <div className="controls-dashboard">
                     <div className="dash-column">
-                      <span><strong>F2:</strong> Rename Tab</span>
-                      <span><strong>DEL:</strong> Delete Tab</span>
-                      <span><strong>CTRL+A:</strong> Add Child Tab</span>
-                      <span><strong>CTRL+E:</strong> Focus/Unfocus Editor</span>
-                    </div>
-                    <div className="dash-column">
-                      <span><strong>ARROWS:</strong> Navigate tabs</span>
-                      <span><strong>ENTER:</strong> Open/Activate tab</span>
-                      <span><strong>CTRL+F:</strong> Find tabs and content in editor</span>
-                      <span><strong>ALT+SHIFT+Up/Down:</strong> Move text line up/down</span>
+                      <span><strong>TAB:</strong> List header controls</span>
+                      <span><strong>SPACE:</strong> Select control</span>
                     </div>
                   </div>
+                  <span className="section-label">GLOBAL SORTING</span>
+                  <div className="button-row">
+                    <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>OLDEST</button>
+                    <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>NEWEST</button>
+                    <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
+                    <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
+                  </div>
                 </div>
-              </div>
-              
-              <div className="search-bar">
-                <input placeholder="Search tabs..." value={globalSearch} onChange={handleSearch} />
-              </div>
-
-              <div className="tab-list tree-view">
-                <div className="root-footer">
-                  <button tabIndex={-1} className="add-btn" onClick={async () => {
-                      const newId = await addTab('root');
-                      if (newId) setActiveTabId(newId);
-                    }}> + Add New Root Item
-                  </button>
+                <div className="control-section">
+                  <span className="section-label">SYSTEM</span>
+                  <div className="button-row">
+                    <button className="export-btn" onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
+                    <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
+                    <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
+                    <button className="toggle-all-btn" onClick={() => { 
+                      const allTabs = Object.values(windows).flatMap(w => w.tabs);
+                      if (expandedListNodes.size > 0) {
+                        setExpandedListNodes(new Set()); // Collapse all
+                      } else {
+                        setExpandedListNodes(new Set(allTabs.map(t => t.id))); // Expand all
+                      }
+                    }}>
+                      {expandedListNodes.size > 0 ? 'COLLAPSE ALL' : 'EXPAND ALL'}
+                    </button>
+                  </div>
                 </div>
-                {getFlattenedTabs(Object.values(windows).flatMap(w => w.tabs))
-                  .map(tab => {
-                    const isSearchMatch = globalSearch.trim() !== '' && tab.title.toLowerCase().includes(globalSearch.toLowerCase());
-
-                    // Calculate if this tab has children to show the toggle arrow
-                    const allTabs = Object.values(windows).flatMap(w => w.tabs);
-                    const hasChildren = allTabs.some(t => t.parentId === tab.id);
-
-                    return (
-                      <div key={tab.id}>
-                        <div 
-                          id={`tab-row-${tab.id}`} tabIndex={-1}
-                          className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${isSearchMatch ? 'search-highlight' : ''}`}
-                          onClick={() => activateTab(tab)}
-                          style={{ paddingLeft: `${(tab as any).depth * 20 + 12}px` }}
-                        >
-                          {/* <span className="tree-indicator">{(tab as any).depth > 0 ? '↳' : '•'}</span> */}
-                          {/* NEW: Clickable Expand/Collapse Arrow */}
-                          <span 
-                            className="tree-indicator" 
-                            style={{ cursor: hasChildren ? 'pointer' : 'default' }}
-                            onClick={(e) => {
-                              if (hasChildren) {
-                                e.stopPropagation(); // Don't trigger the tab selection
-                                setExpandedListNodes(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(tab.id)) next.delete(tab.id);
-                                  else next.add(tab.id);
-                                  return next;
-                                });
-                              }
-                            }}
-                          >
-                            {hasChildren ? (expandedListNodes.has(tab.id) ? '▼' : '▶') : '•'}
-                          </span>
-                          {editingTabId === tab.id ? (
-                            <input 
-                              autoFocus value={tab.title} 
-                              onBlur={() => setEditingTabId(null)} 
-                              onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} 
-                              onChange={(e) => {
-                                const next = { ...windows };
-                                Object.keys(next).forEach(winId => {
-                                  const t = next[winId].tabs.find(i => i.id === tab.id);
-                                  if (t) t.title = e.target.value;
-                                });
-                                setWindows(next);
-                              }}
-                            />
-                          ) : ( <span className="tab-title">{tab.title}</span> )}
-                          
-                          <div className="tab-actions">
-                            <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
-                            <button tabIndex={-1} className="del-btn" onClick={(e) => { 
-                              e.stopPropagation(); 
-                              const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === tab.id));
-                              if (winId) deleteTab(winId, tab.id);
-                            }}>✕</button>
-                          </div>
-                        </div>
-
-                        {activeTabId === tab.id && (
-                          <div className="tab-list-actions" style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}>
-                            <button tabIndex={-1} className="add-btn" onClick={async () => {
-                                const newId = await addTab(tab.id);
-                                if (newId) {
-                                  setActiveTabId(newId);
-                                  setActivePath(prev => [...prev, newId]);
-                                }
-                              }}>+ Add Child
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-                }
+                <div className="controls-dashboard">
+                  <div className="dash-column">
+                    <span><strong>F2:</strong> Rename Tab</span>
+                    <span><strong>DEL:</strong> Delete Tab</span>
+                    <span><strong>CTRL+A:</strong> Add Child Tab</span>
+                    <span><strong>CTRL+E:</strong> Focus/Unfocus Editor</span>
+                  </div>
+                  <div className="dash-column">
+                    <span><strong>ARROWS:</strong> Navigate tabs</span>
+                    <span><strong>ENTER:</strong> Open/Activate tab</span>
+                    <span><strong>CTRL+F:</strong> Find tabs and content in editor</span>
+                    <span><strong>ALT+SHIFT+Up/Down:</strong> Move text line up/down</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </ResizableBox>
-        ) : (
-          /* --- MODE: MILLER COLUMNS --- */
-          activePath.map((winId, index) => {
-            const win = windows[winId];
-            if (!win) return null;
-            let windowName = 'LIBRARY';
-            if (winId !== 'root') {
-              const parentTab = Object.values(windows).flatMap(w => w.tabs).find(t => t.id === winId);
-              windowName = parentTab ? parentTab.title.toUpperCase() : 'SUB-LEVEL';
-            }
             
-            const isCollapsed = win.collapsed;
-            const currentWidth = isCollapsed ? 40 : (win.width || 280);
-            const displayTabs = getFilteredAndSortedTabs(win.tabs);
+            <div className="search-bar">
+              <input placeholder="Search tabs..." value={globalSearch} onChange={handleSearch} />
+            </div>
 
-            return (
-              <ResizableBox 
-                key={winId} 
-                width={currentWidth} height={Infinity} axis="x" 
-                minConstraints={[isCollapsed ? 40 : 150, Infinity]} maxConstraints={[600, Infinity]}
-                onResize={(_e, { size }) => setWindows(p => ({ ...p, [winId]: { ...p[winId], width: size.width, collapsed: size.width <= 60 } }))}
-                handle={<div className="drag-handle" onDoubleClick={() => setWindows(p => ({ ...p, [winId]: { ...p[winId], collapsed: !isCollapsed, width: isCollapsed ? 280 : 40 } }))} />}
-              >
-                <div className={`column ${isCollapsed ? 'collapsed' : ''}`} style={{ width: '100%' }}>
-                  <div className="column-header">
-                    <span className="header-title">{windowName}</span>
-                    {!isCollapsed && winId === 'root' && (
-                      <div className="header-controls">
-                        <div className="control-section">
-                          <div className="controls-dashboard">
-                            <div className="dash-column">
-                              <span><strong>TAB:</strong> List header controls</span>
-                              <span><strong>SPACE:</strong> Select control</span>
-                            </div>
-                          </div>
-                          <span className="section-label">GLOBAL SORTING</span>
-                          <div className="button-row">
-                            <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>OLDEST</button>
-                            <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>NEWEST</button>
-                            <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
-                            <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
-                          </div>
-                        </div>
-                        <div className="control-section">
-                          <span className="section-label">SYSTEM</span>
-                          <div className="button-row">
-                            <button className="export-btn" disabled={win.tabs.length === 0} onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
-                            <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
-                            <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
-                            <button className="toggle-mode-btn active" onClick={() => setIsMillerMode(true)}>VIEW: Miller columns</button>
-                            <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept=".json" onChange={handleImport} />
-                            <button className="toggle-all-btn" onClick={() => setWindows(p => { 
-                              const any = Object.entries(p).some(([id, w]) => id !== 'root' && !w.collapsed); 
-                              const next = {...p}; 
-                              Object.keys(next).forEach(id => { if (id !== 'root') next[id] = {...next[id], collapsed: any}; }); 
-                              return next; 
-                            })}>
-                              {Object.values(windows).some(w => w.id !== 'root' && !w.collapsed) ? 'COLLAPSE ALL' : 'EXPAND ALL'}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="controls-dashboard">
-                          <div className="dash-column">
-                            <span><strong>F2:</strong> Rename Tab</span>
-                            <span><strong>DEL:</strong> Delete Tab</span>
-                            <span><strong>CTRL+A:</strong> Add Child Tab</span>
-                            <span><strong>CTRL+E:</strong> Focus/Unfocus Editor</span>
-                          </div>
-                          <div className="dash-column">
-                            <span><strong>ARROWS:</strong> Navigate tabs</span>
-                            <span><strong>ENTER:</strong> Open/Activate tab</span>
-                            <span><strong>CTRL+F:</strong> Find tabs and content in editor</span>
-                            <span><strong>ALT+SHIFT+Up/Down:</strong> Move text line up/down</span>
-                          </div>
+            <div className="tab-list tree-view">
+              <div className="root-footer">
+                <button tabIndex={-1} className="add-btn" onClick={async () => {
+                    const newId = await addTab('root');
+                    if (newId) setActiveTabId(newId);
+                  }}> + Add New Root Item
+                </button>
+              </div>
+              {getFlattenedTabs(Object.values(windows).flatMap(w => w.tabs))
+                .map(tab => {
+                  const isSearchMatch = globalSearch.trim() !== '' && tab.title.toLowerCase().includes(globalSearch.toLowerCase());
+
+                  // Calculate if this tab has children to show the toggle arrow
+                  const allTabs = Object.values(windows).flatMap(w => w.tabs);
+                  const hasChildren = allTabs.some(t => t.parentId === tab.id);
+
+                  return (
+                    <div key={tab.id}>
+                      <div 
+                        id={`tab-row-${tab.id}`} tabIndex={-1}
+                        className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${isSearchMatch ? 'search-highlight' : ''}`}
+                        onClick={() => activateTab(tab)}
+                        style={{ paddingLeft: `${(tab as any).depth * 20 + 12}px` }}
+                      >
+                        {/* <span className="tree-indicator">{(tab as any).depth > 0 ? '↳' : '•'}</span> */}
+                        {/* NEW: Clickable Expand/Collapse Arrow */}
+                        <span 
+                          className="tree-indicator" 
+                          style={{ cursor: hasChildren ? 'pointer' : 'default' }}
+                          onClick={(e) => {
+                            if (hasChildren) {
+                              e.stopPropagation(); // Don't trigger the tab selection
+                              setExpandedListNodes(prev => {
+                                const next = new Set(prev);
+                                if (next.has(tab.id)) next.delete(tab.id);
+                                else next.add(tab.id);
+                                return next;
+                              });
+                            }
+                          }}
+                        >
+                          {hasChildren ? (expandedListNodes.has(tab.id) ? '▼' : '▶') : '•'}
+                        </span>
+                        {editingTabId === tab.id ? (
+                          <input 
+                            autoFocus value={tab.title} 
+                            onBlur={() => setEditingTabId(null)} 
+                            onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} 
+                            onChange={(e) => {
+                              const next = { ...windows };
+                              Object.keys(next).forEach(winId => {
+                                const t = next[winId].tabs.find(i => i.id === tab.id);
+                                if (t) t.title = e.target.value;
+                              });
+                              setWindows(next);
+                            }}
+                          />
+                        ) : ( <span className="tab-title">{tab.title}</span> )}
+                        
+                        <div className="tab-actions">
+                          <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
+                          <button tabIndex={-1} className="del-btn" onClick={(e) => { 
+                            e.stopPropagation(); 
+                            const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === tab.id));
+                            if (winId) deleteTab(winId, tab.id);
+                          }}>✕</button>
                         </div>
                       </div>
-                    )}
-                  </div>
-                  {!isCollapsed && (
-                    <>
-                      {winId === 'root' && (
-                        <div className="search-bar">
-                          <input placeholder="Search tabs..." value={globalSearch} onChange={handleSearch} />
+
+                      {activeTabId === tab.id && (
+                        <div className="tab-list-actions" style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}>
+                          <button tabIndex={-1} className="add-btn" onClick={async () => {
+                              const newId = await addTab(tab.id);
+                              if (newId) {
+                                setActiveTabId(newId);
+                              }
+                            }}>+ Add Child
+                          </button>
                         </div>
                       )}
-                      <div className="tab-list">
-                        {displayTabs.map(tab => {
-                          const isSearchMatch = globalSearch.trim() !== '' && tab.title.toLowerCase().includes(globalSearch.toLowerCase());
-                          return (
-                            <div 
-                              key={tab.id} id={`tab-row-${tab.id}`} tabIndex={-1}
-                              className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${activeBranchIds.includes(tab.id) ? 'branch-active' : ''} ${isSearchMatch ? 'search-highlight' : ''}`} 
-                              onClick={() => handleTabClick(winId, tab, index)}
-                            >
-                              {editingTabId === tab.id ? (
-                                <input 
-                                  autoFocus value={tab.title} 
-                                  onBlur={() => setEditingTabId(null)} 
-                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setEditingTabId(null); } }} 
-                                  onChange={(e) => { 
-                                    const next = { ...windows }; 
-                                    const t = next[winId].tabs.find(i => i.id === tab.id); 
-                                    if (t) t.title = e.target.value; 
-                                    setWindows(next); 
-                                  }} 
-                                />
-                              ) : ( <span className="tab-title">{tab.title}</span> )}
-                              <div className="tab-actions">
-                                {/* Removed tabIndex for actions so they are skipped by TAB */}
-                                <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
-                                <button tabIndex={-1} className="del-btn" onClick={(e) => { e.stopPropagation(); deleteTab(winId, tab.id); }}>✕</button>
-                              </div>
-                            </div>
-                          )
-                        })}
-                        <button tabIndex={-1} className="add-btn" onClick={() => addTab(winId)}>+ Add Item</button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </ResizableBox>
-            );
-          })
-        )}
+                    </div>
+                  )
+                })
+              }
+            </div>
+          </div>
+        </ResizableBox>
 
         {/* --- THE EDITOR --- */}
         <div className="writing-space">

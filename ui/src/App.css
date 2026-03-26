@@ -144,10 +144,6 @@ input:focus-visible {
   background-color: var(--accent-color);
   color: var(--bg-main); 
 }
-.tab-row.branch-active:not(.active) {
-  border-left: 4px solid var(--accent-color);
-  background: var(--hover-color);
-}
 .tab-title { flex-grow: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-row input { background: var(--bg-input); border: 1px solid var(--accent-color); color: var(--text-main); padding: 2px 5px; width: 100%; outline: none; }
 .tab-actions { display: flex; gap: 8px; }
@@ -156,18 +152,7 @@ input:focus-visible {
 .del-btn:hover { color: var(--danger-color); }
 .add-btn { width: 100%; padding: 12px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; text-align: left; font-size: 12px; }
 .add-btn:hover { color: var(--text-main); background: var(--hover-color); }
-/* Collapsed Columns */
-.column.collapsed { width: 40px !important; border-right: 2px solid var(--border-color); }
-.column.collapsed .column-header { writing-mode: vertical-rl; padding: 15px 5px; color: var(--accent-color); }
-/* 3. Improve the collapsed column header text */
-.column.collapsed .header-title {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  padding: 20px 0;
-  font-size: 10px;
-  letter-spacing: 2px;
-  white-space: nowrap;
-}
+
 /* 2. Style the Drag Handle for visibility */
 .drag-handle {
   position: absolute;
@@ -229,22 +214,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
   opacity: 0.5;
   font-size: 0.9em;
   font-family: monospace;
-}
-.toggle-mode-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--bg-header);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-}
-.toggle-mode-btn.active {
-  background: var(--accent-color);
-  color: white;
-  border-color: var(--accent-color);
 }
 /* =========================
    CONTROLS DASHBOARD
