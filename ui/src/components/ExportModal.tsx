@@ -1,4 +1,5 @@
 // src/components/ExportModal.tsx
+// custom pop-up logic for exporting the database to text or JSON
 import { useState, useEffect } from 'react';
 import type { Tab, WindowData } from '../types';
 

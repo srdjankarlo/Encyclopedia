@@ -1,10 +1,11 @@
 // src/components/EditorToolbar.tsx
+// custom UI for the formatting buttons and the search-to-link feature.
 import { useState } from 'react';
 import { Editor } from '@tiptap/react';
 import { 
   Heading1, Heading2, Heading3, Type, Bold, Italic, Strikethrough, 
   List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
-  Columns, Rows, Trash2, Link as LinkIcon, CheckSquare, MinusSquare
+  Trash2, Link as LinkIcon, CheckSquare, MinusSquare
 } from 'lucide-react';
 import type { WindowData, SaveStatus } from '../types';
 
@@ -106,6 +107,31 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
                 </svg>
               </button>
               <button onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row" style={{color: '#ff4d4d'}}><MinusSquare size={18} /></button>
+              <div className="tool-separator" />
+              <button 
+                onClick={() => editor.chain().focus().mergeCells().run()} 
+                disabled={!editor.can().mergeCells()} 
+                title="Merge Selected Cells"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                  {/* Outer Table Box */}
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  {/* Dashed line representing the merged boundary */}
+                  <line x1="3" y1="12" x2="21" y2="12" strokeDasharray="4 4" opacity="0.5" />
+                </svg>
+              </button>
+
+              {/* Optional: Add a Split Cell button right next to it so you can un-merge! */}
+              <button 
+                onClick={() => editor.chain().focus().splitCell().run()} 
+                disabled={!editor.can().splitCell()} 
+                title="Split Cell"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <line x1="12" y1="3" x2="12" y2="21" />
+                </svg>
+              </button>
               <div className="tool-separator" />
               <button onClick={() => editor.chain().focus().deleteTable().run()} style={{color: '#ff4d4d'}} title="Delete Table"><Trash2 size={18} /></button>
             </>

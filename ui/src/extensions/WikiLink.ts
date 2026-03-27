@@ -1,4 +1,5 @@
 // src/extensions/WikiLink.ts
+// custom TipTap extension that allows you to click data-tab-id spans and navigate internally
 import { Mark, mergeAttributes } from '@tiptap/core';
 
 export const WikiLink = Mark.create({

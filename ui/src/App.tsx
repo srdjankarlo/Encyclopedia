@@ -21,6 +21,7 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { Extension } from '@tiptap/core';
 import { TextSelection } from 'prosemirror-state';
+import { openUrl } from '@tauri-apps/plugin-opener';
 
 const API_URL = "http://localhost:8080";
 
@@ -132,6 +133,11 @@ export default function App() {
   const isInitialMount = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const windowsRef = useRef(windows);
+  useEffect(() => {
+    windowsRef.current = windows;
+  }, [windows]);
+
   const editor = useEditor({
     extensions: [
       CustomEditorShortcuts,
@@ -153,12 +159,10 @@ export default function App() {
       // Link.configure({ openOnClick: false, autolink: false, HTMLAttributes: { class: 'wiki-link', target: null, rel: null } }),
       // EXTERNAL WEB LINKS CONFIG
       Link.configure({ 
-        openOnClick: true, // Allows clicking to open in browser
+        openOnClick: false,
         autolink: true,    // Auto-detects URLs
         HTMLAttributes: { 
-          class: 'external-link', 
-          target: '_blank', 
-          rel: 'noopener noreferrer' 
+          class: 'external-link'
         } 
       }),
     ],
@@ -166,15 +170,32 @@ export default function App() {
       handleDOMEvents: {
         click: (_view, event) => {
           const target = event.target as HTMLElement;
+
+          // --- 1. HANDLE WIKI LINKS (Existing) ---
           const wikiSpan = target.closest('.wiki-link');
           if (wikiSpan) {
             const tabId = wikiSpan.getAttribute('data-tab-id');
             const tabExists = Object.values(windows).some(w => w.tabs.some(t => t.id === tabId));
             if (!tabExists) {
-              wikiSpan.setAttribute('data-broken', 'true'); alert("This tab has been deleted and the link is broken."); return true;
+              wikiSpan.setAttribute('data-broken', 'true'); 
+              alert("This tab has been deleted and the link is broken."); 
+              return true;
             }
-            handleInternalNavigation(tabId!); return true;
+            handleInternalNavigation(tabId!); 
+            return true;
           }
+
+          // --- 2. HANDLE EXTERNAL LINKS (New) ---
+          const externalLink = target.closest('a.external-link') as HTMLAnchorElement;
+          if (externalLink && externalLink.href) {
+            event.preventDefault(); // Stop the app from trying to navigate internally
+            
+            // Call the Tauri Opener API
+            openUrl(externalLink.href).catch(console.error);
+            
+            return true; // Mark event as handled
+          }
+
           return false;
         },
       },
@@ -192,7 +213,37 @@ export default function App() {
         return next;
       });
     },
-  });
+  }, [activeTabId]);
+
+  useEffect(() => {
+    if (!editor || !activeTabId) return;
+
+    const handleUpdate = () => {
+      const html = editor.getHTML();
+      
+      // Check if content actually changed to avoid unnecessary state updates
+      const currentTab = Object.values(windowsRef.current)
+        .flatMap(w => w.tabs)
+        .find(t => t.id === activeTabId);
+
+      if (currentTab && currentTab.content === html) return;
+
+      setWindows(prev => {
+        const next = { ...prev };
+        for (const winId in next) {
+          const tab = next[winId].tabs.find(t => t.id === activeTabId);
+          if (tab) { 
+            tab.content = html; 
+            break; 
+          }
+        }
+        return next;
+      });
+    };
+
+    editor.on('update', handleUpdate);
+    return () => { editor.off('update', handleUpdate); };
+  }, [editor, activeTabId]);
 
   // --- ACTIONS ---
   const addTab = async (windowId: string) => {
@@ -240,29 +291,29 @@ export default function App() {
     try { await fetch(`${API_URL}/tabs/${tabId}`, { method: 'DELETE' }); } catch (e) { console.error(e); }
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const importedData: any[] = JSON.parse(event.target?.result as string);
-        const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
-        const idMap: Record<string, string> = {}; 
-        importedData.forEach(item => { idMap[item.title] = `tab-${Math.random().toString(36).substring(2, 11)}`; });
+  // const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const file = e.target.files?.[0];
+  //   if (!file) return;
+  //   const reader = new FileReader();
+  //   reader.onload = (event) => {
+  //     try {
+  //       const importedData: any[] = JSON.parse(event.target?.result as string);
+  //       const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
+  //       const idMap: Record<string, string> = {}; 
+  //       importedData.forEach(item => { idMap[item.title] = `tab-${Math.random().toString(36).substring(2, 11)}`; });
 
-        [...importedData].sort((a, b) => (a.depth || 0) - (b.depth || 0)).forEach(item => {
-          const newId = idMap[item.title];
-          const targetWinId = (item.fromParent !== "Root" && idMap[item.fromParent]) ? idMap[item.fromParent] : 'root';
-          if (!newWindows[targetWinId]) newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
-          newWindows[targetWinId].tabs.push({ id: newId, title: item.title, content: item.content, createdAt: item.createdAt || Date.now() });
-          if (!newWindows[newId]) newWindows[newId] = { id: newId, tabs: [], collapsed: false };
-        });
-        setWindows(newWindows);
-      } catch (err) { alert("Import failed: Ensure you are using a valid JSON export file."); }
-    };
-    reader.readAsText(file);
-  };
+  //       [...importedData].sort((a, b) => (a.depth || 0) - (b.depth || 0)).forEach(item => {
+  //         const newId = idMap[item.title];
+  //         const targetWinId = (item.fromParent !== "Root" && idMap[item.fromParent]) ? idMap[item.fromParent] : 'root';
+  //         if (!newWindows[targetWinId]) newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
+  //         newWindows[targetWinId].tabs.push({ id: newId, title: item.title, content: item.content, createdAt: item.createdAt || Date.now() });
+  //         if (!newWindows[newId]) newWindows[newId] = { id: newId, tabs: [], collapsed: false };
+  //       });
+  //       setWindows(newWindows);
+  //     } catch (err) { alert("Import failed: Ensure you are using a valid JSON export file."); }
+  //   };
+  //   reader.readAsText(file);
+  // };
 
   const getEditorStats = () => {
     if (!editor) return { chars: 0, words: 0, lines: 0 };
