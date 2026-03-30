@@ -23,6 +23,10 @@ import { Extension } from '@tiptap/core';
 import { TextSelection } from 'prosemirror-state';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { SearchHighlight } from './extensions/SearchHighlight';
+import { TextAlign } from '@tiptap/extension-text-align';
+import { Color } from '@tiptap/extension-color';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { Highlight } from '@tiptap/extension-highlight';
 
 const API_URL = "http://localhost:8080";
 
@@ -113,6 +117,8 @@ export default function App() {
   const [windows, setWindows] = useState<Record<string, WindowData>>({ 'root': { id: 'root', tabs: [] } });
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   
   // NEW: Editor visibility state
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -148,9 +154,56 @@ export default function App() {
     extensions: [
       CustomEditorShortcuts,
       StarterKit.configure({ heading: false, bulletList: false, orderedList: false, dropcursor: {} }),
+      TextStyle,
+      Color,
+      Highlight.configure({ multicolor: true }),
       TaskList, TaskItem.configure({ nested: true }),
-      Heading.configure({ levels: [1, 2, 3] }), BulletList, OrderedList,
-      Table.configure({ resizable: true, lastColumnResizable: true, allowTableNodeSelection: true}), TableRow, TableHeader, TableCell,
+      Heading.configure({ levels: [1, 2, 3] }),
+      BulletList,
+      OrderedList,
+      // CUSTOM ORDERED LIST (For a,b,c support)
+      // OrderedList.extend({
+      //   addAttributes() {
+      //     return {
+      //       ...this.parent?.(),
+      //       listStyle: {
+      //         default: 'decimal',
+      //         parseHTML: element => element.style.listStyleType || 'decimal',
+      //         renderHTML: attributes => ({ style: `list-style-type: ${attributes.listStyle}` }),
+      //       },
+      //     };
+      //   },
+      // }),
+      // OrderedList.configure({
+      //   HTMLAttributes: {
+      //     class: 'ordered-list',
+      //   },
+      //   // This allows the 'type' attribute (e.g., <ol type="a">) to be preserved
+      //   keepAttributes: true,
+      //   keepMarks: true,
+      // }),
+      // CUSTOM TABLE CELL (For background colors and vertical alignment)
+      Table.configure({ resizable: true, lastColumnResizable: true, allowTableNodeSelection: true}),
+      TableRow, TableHeader,
+      TableCell.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            backgroundColor: {
+              default: null,
+              parseHTML: element => element.getAttribute('data-bg-color'),
+              renderHTML: attributes => attributes.backgroundColor ? { 'data-bg-color': attributes.backgroundColor, style: `background-color: ${attributes.backgroundColor}` } : {},
+            },
+            verticalAlign: {
+              default: 'top',
+              parseHTML: element => element.style.verticalAlign || 'top',
+              renderHTML: attributes => ({ style: `vertical-align: ${attributes.verticalAlign}` }),
+            }
+          };
+        }
+      }),
+      // 3. TEXT ALIGNMENT (For horizontal alignment in cells)
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
       (ImageResize as any).configure({
         inline: false, allowBase64: true, HTMLAttributes: { class: 'resizable-image' },
         addAttributes() {
@@ -205,6 +258,26 @@ export default function App() {
 
           return false;
         },
+        // NEW: Double-click to auto-fit table columns
+        dblclick: (_view, event) => {
+          const target = event.target as HTMLElement;
+          if (target.classList.contains('column-resize-handle')) {
+            // If they double click the resizer, remove the fixed width from the column 
+            // so the browser naturally snaps it to the text width.
+            const cell = target.closest('td, th') as HTMLElement;
+            if (cell) {
+              const cellIndex = Array.from(cell.parentElement!.children).indexOf(cell);
+              const table = cell.closest('table');
+              const colgroup = table?.querySelector('colgroup');
+              if (colgroup) {
+                const col = colgroup.children[cellIndex] as HTMLElement;
+                if (col) col.removeAttribute('width'); // Resets to auto-fit
+              }
+              return true;
+            }
+          }
+          return false;
+        }
       },
     },
     content: '',
@@ -686,202 +759,234 @@ export default function App() {
   };
 
   return (
-    <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}>
-      <div className="miller-columns">
-        {/* /* Use state for width so List View remembers resizing */}
-        <ResizableBox 
-          width={listViewWidth} height={Infinity} axis="x" 
-          onResize={(_e, { size }) => setListViewWidth(size.width)}
-          minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]}
-          handle={<div className="drag-handle" />}
-        >
-          <div className="column" style={{ width: '100%' }}>
-            <div className="column-header">
-              <span className="header-title">LIBRARY</span>
-              <div className="header-controls">
-                <div className="control-section">
-                  <div className="controls-dashboard">
-                    <div className="dash-column">
-                      <span><strong>TAB:</strong> List header controls</span>
-                      <span><strong>SPACE:</strong> Select control</span>
-                    </div>
-                  </div>
-                  <span className="section-label">GLOBAL SORTING</span>
-                  <div className="button-row">
-                    <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>OLDEST</button>
-                    <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>NEWEST</button>
-                    <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
-                    <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
-                  </div>
-                </div>
-                <div className="control-section">
-                  <span className="section-label">SYSTEM</span>
-                  <div className="button-row">
-                    <button className="export-btn" onClick={() => setIsExportModalOpen(true)}>EXPORT</button>
-                    <button className="import-btn" onClick={() => fileInputRef.current?.click()}>IMPORT</button>
-                    <button className="theme-toggle-btn" onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? '🌙 DARK' : '☀️ LIGHT'}</button>
-                    <button className="toggle-all-btn" onClick={() => { 
-                      const allTabs = Object.values(windows).flatMap(w => w.tabs);
-                      if (expandedListNodes.size > 0) {
-                        setExpandedListNodes(new Set()); // Collapse all
-                      } else {
-                        setExpandedListNodes(new Set(allTabs.map(t => t.id))); // Expand all
-                      }
-                    }}>
-                      {expandedListNodes.size > 0 ? 'COLLAPSE ALL' : 'EXPAND ALL'}
-                    </button>
-                  </div>
-                </div>
-                <div className="controls-dashboard">
-                  <div className="dash-column">
-                    <span><strong>F2:</strong> Rename Tab</span>
-                    <span><strong>DEL:</strong> Delete Tab</span>
-                    <span><strong>CTRL+A:</strong> Add Child Tab</span>
-                    <span><strong>CTRL+E:</strong> Focus/Unfocus Editor</span>
-                  </div>
-                  <div className="dash-column">
-                    <span><strong>ARROWS:</strong> Navigate tabs</span>
-                    <span><strong>ENTER:</strong> Open/Activate tab</span>
-                    <span><strong>CTRL+F:</strong> Find tabs and content in editor</span>
-                    <span><strong>ALT+SHIFT+Up/Down:</strong> Move text line up/down</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="search-bar" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <input placeholder="Search tabs by title..." value={globalSearch} onChange={handleSearch} />
-              
-              <div style={{ display: 'flex', gap: '5px' }}>
-                <input 
-                  placeholder="Search content..." 
-                  value={contentSearch} 
-                  onChange={handleContentSearch} 
-                  onKeyDown={(e) => { if (e.key === 'Enter') cycleMatch(1); }}
-                />
-                {contentMatches.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', fontSize: '11px', gap: '4px' }}>
-                    <button onClick={() => cycleMatch(-1)}>▲</button>
-                    <span>{currentMatchIndex + 1}/{contentMatches.length}</span>
-                    <button onClick={() => cycleMatch(1)}>▼</button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="tab-list tree-view">
-              <div className="root-footer">
-                <button tabIndex={-1} className="add-btn" onClick={async () => {
-                    const newId = await addTab('root');
-                    if (newId) setActiveTabId(newId);
-                  }}> + Add New Root Item
-                </button>
-              </div>
-              {getFlattenedTabs(Object.values(windows).flatMap(w => w.tabs))
-                .map(tab => {
-                  const isSearchMatch = globalSearch.trim() !== '' && tab.title.toLowerCase().includes(globalSearch.toLowerCase());
-
-                  // Calculate if this tab has children to show the toggle arrow
-                  const allTabs = Object.values(windows).flatMap(w => w.tabs);
-                  const hasChildren = allTabs.some(t => t.parentId === tab.id);
-
-                  return (
-                    <div key={tab.id}>
-                      <div 
-                        id={`tab-row-${tab.id}`} tabIndex={-1}
-                        className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${isSearchMatch ? 'search-highlight' : ''}`}
-                        onClick={() => activateTab(tab)}
-                        style={{ paddingLeft: `${(tab as any).depth * 20 + 12}px` }}
-                      >
-                        {/* <span className="tree-indicator">{(tab as any).depth > 0 ? '↳' : '•'}</span> */}
-                        {/* NEW: Clickable Expand/Collapse Arrow */}
-                        <span 
-                          className="tree-indicator" 
-                          style={{ cursor: hasChildren ? 'pointer' : 'default' }}
-                          onClick={(e) => {
-                            if (hasChildren) {
-                              e.stopPropagation(); // Don't trigger the tab selection
-                              setExpandedListNodes(prev => {
-                                const next = new Set(prev);
-                                if (next.has(tab.id)) next.delete(tab.id);
-                                else next.add(tab.id);
-                                return next;
-                              });
-                            }
-                          }}
-                        >
-                          {hasChildren ? (expandedListNodes.has(tab.id) ? '▼' : '▶') : '•'}
-                        </span>
-                        {editingTabId === tab.id ? (
-                          <input 
-                            autoFocus value={tab.title} 
-                            onBlur={() => setEditingTabId(null)} 
-                            onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} 
-                            onChange={(e) => {
-                              const next = { ...windows };
-                              Object.keys(next).forEach(winId => {
-                                const t = next[winId].tabs.find(i => i.id === tab.id);
-                                if (t) t.title = e.target.value;
-                              });
-                              setWindows(next);
-                            }}
-                          />
-                        ) : ( <span className="tab-title">{tab.title}</span> )}
-                        
-                        <div className="tab-actions">
-                          <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
-                          <button tabIndex={-1} className="del-btn" onClick={(e) => { 
-                            e.stopPropagation(); 
-                            const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === tab.id));
-                            if (winId) deleteTab(winId, tab.id);
-                          }}>✕</button>
-                        </div>
-                      </div>
-
-                      {activeTabId === tab.id && (
-                        <div className="tab-list-actions" style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}>
-                          <button tabIndex={-1} className="add-btn" onClick={async () => {
-                              const newId = await addTab(tab.id);
-                              if (newId) {
-                                setActiveTabId(newId);
-                              }
-                            }}>+ Add Child
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })
-              }
-            </div>
-          </div>
-        </ResizableBox>
-
-        {/* --- THE EDITOR --- */}
-        <div className="writing-space">
-          {activeTabId && isEditorOpen && editor ? (
-            <div className="editor-wrapper">
-              <EditorToolbar editor={editor} windows={windows} saveStatus={saveStatus} lastSaved={lastSaved} handleManualRetry={() => setWindows(p => ({...p}))} />
-              <EditorContent editor={editor} className="rich-editor" />
-              <div className="editor-footer">
-                <div className="stat">Length: <span>{getEditorStats().chars}</span></div>
-                <div className="stat">Words: <span>{getEditorStats().words}</span></div>
-                <div className="stat">Lines: <span>{getEditorStats().lines}</span></div>
-              </div>
-            </div>
-          ) : (
-            <div className="empty-state">
-              {activeTabId ? (
-                <span>Editor hidden. Press <strong>ENTER</strong> to open.</span>
-              ) : (
-                "Select an item to view/edit content."
-              )}
+    <div className={`app-wrapper ${isDarkMode ? 'dark-theme' : ''}`}>
+      
+      {/* --- NEW GLOBAL MENUBAR --- */}
+      <div className="global-menubar">
+        <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
+          <button onMouseEnter={() => setActiveMenu('data')} onClick={() => setActiveMenu(activeMenu === 'data' ? null : 'data')}>Data</button>
+          {activeMenu === 'data' && (
+            <div className="dropdown">
+              <button onClick={() => fileInputRef.current?.click()}>Import</button>
+              <button onClick={() => setIsExportModalOpen(true)}>Export</button>
             </div>
           )}
+        </div>
+
+        <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
+          <button onMouseEnter={() => setActiveMenu('sort')} onClick={() => setActiveMenu(activeMenu === 'sort' ? null : 'sort')}>Sort</button>
+          {activeMenu === 'sort' && (
+            <div className="dropdown">
+              <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>Oldest</button>
+              <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>Newest</button>
+              <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
+              <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
+            </div>
+          )}
+        </div>
+
+        <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
+          <button onMouseEnter={() => setActiveMenu('view')} onClick={() => setActiveMenu(activeMenu === 'view' ? null : 'view')}>View</button>
+          {activeMenu === 'view' && (
+            <div className="dropdown">
+              <button onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</button>
+              <button onClick={() => {
+                const allTabs = Object.values(windows).flatMap(w => w.tabs);
+                if (expandedListNodes.size > 0) {
+                  setExpandedListNodes(new Set()); // Collapse all
+                } else {
+                  setExpandedListNodes(new Set(allTabs.map(t => t.id))); // Expand all
+                }
+              }}>{expandedListNodes.size > 0 ? 'Collapse All' : 'Expand All'}</button>
+            </div>
+          )}
+        </div>
+
+        <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
+          <button onMouseEnter={() => setActiveMenu('help')} onClick={() => setActiveMenu(activeMenu === 'help' ? null : 'help')}>Help</button>
+          {activeMenu === 'help' && (
+            <div className="dropdown">
+              <button onClick={() => setShowShortcuts(true)}>Show Shortcuts</button>
+            </div>
+          )}
+        </div>
+        
+        {/* Right side search bars */}
+        <div className="menubar-search">
+          <input placeholder="Search tabs by title..." value={globalSearch} onChange={handleSearch} />
+          <div className="content-search-wrapper">
+            <input 
+              placeholder="Search content..." 
+              value={contentSearch} 
+              onChange={handleContentSearch} 
+              onKeyDown={(e) => { if (e.key === 'Enter') cycleMatch(1); }} 
+            />
+            {contentMatches.length > 0 && (
+              <div className="search-nav">
+                <button onClick={() => cycleMatch(-1)}>▲</button>
+                <span>{currentMatchIndex + 1}/{contentMatches.length}</span>
+                <button onClick={() => cycleMatch(1)}>▼</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* --- EXISTING APP CONTAINER --- */}
+      <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}>
+        <div className="miller-columns">
+          {/* Use state for width so List View remembers resizing */}
+          <ResizableBox 
+            width={listViewWidth} height={Infinity} axis="x" 
+            onResize={(_e, { size }) => setListViewWidth(size.width)}
+            minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]}
+            handle={<div className="drag-handle" />}
+          >
+            <div className="column" style={{ width: '100%' }}>
+              {/* Cleaned up column header since controls moved to top menu */}
+              <div className="column-header" style={{ borderBottom: 'none' }}>
+                <span className="header-title">LIBRARY</span>
+              </div>
+
+              <div className="tab-list tree-view">
+                <div className="root-footer">
+                  <button tabIndex={-1} className="add-btn" onClick={async () => {
+                      const newId = await addTab('root');
+                      if (newId) setActiveTabId(newId);
+                    }}> + Add New Root Item
+                  </button>
+                </div>
+                {getFlattenedTabs(Object.values(windows).flatMap(w => w.tabs))
+                  .map(tab => {
+                    const isSearchMatch = globalSearch.trim() !== '' && tab.title.toLowerCase().includes(globalSearch.toLowerCase());
+
+                    // Calculate if this tab has children to show the toggle arrow
+                    const allTabs = Object.values(windows).flatMap(w => w.tabs);
+                    const hasChildren = allTabs.some(t => t.parentId === tab.id);
+
+                    return (
+                      <div key={tab.id}>
+                        <div 
+                          id={`tab-row-${tab.id}`} tabIndex={-1}
+                          className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${isSearchMatch ? 'search-highlight' : ''}`}
+                          onClick={() => activateTab(tab)}
+                          style={{ paddingLeft: `${(tab as any).depth * 20 + 12}px` }}
+                        >
+                          {/* NEW: Clickable Expand/Collapse Arrow */}
+                          <span 
+                            className="tree-indicator" 
+                            style={{ cursor: hasChildren ? 'pointer' : 'default' }}
+                            onClick={(e) => {
+                              if (hasChildren) {
+                                e.stopPropagation(); // Don't trigger the tab selection
+                                setExpandedListNodes(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(tab.id)) next.delete(tab.id);
+                                  else next.add(tab.id);
+                                  return next;
+                                });
+                              }
+                            }}
+                          >
+                            {hasChildren ? (expandedListNodes.has(tab.id) ? '▼' : '▶') : '•'}
+                          </span>
+                          {editingTabId === tab.id ? (
+                            <input 
+                              autoFocus value={tab.title} 
+                              onBlur={() => setEditingTabId(null)} 
+                              onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} 
+                              onChange={(e) => {
+                                const next = { ...windows };
+                                Object.keys(next).forEach(winId => {
+                                  const t = next[winId].tabs.find(i => i.id === tab.id);
+                                  if (t) t.title = e.target.value;
+                                });
+                                setWindows(next);
+                              }}
+                            />
+                          ) : ( <span className="tab-title">{tab.title}</span> )}
+                          
+                          <div className="tab-actions">
+                            <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
+                            <button tabIndex={-1} className="del-btn" onClick={(e) => { 
+                              e.stopPropagation(); 
+                              const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === tab.id));
+                              if (winId) deleteTab(winId, tab.id);
+                            }}>✕</button>
+                          </div>
+                        </div>
+
+                        {activeTabId === tab.id && (
+                          <div className="tab-list-actions" style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}>
+                            <button tabIndex={-1} className="add-btn" onClick={async () => {
+                                const newId = await addTab(tab.id);
+                                if (newId) {
+                                  setActiveTabId(newId);
+                                }
+                              }}>+ Add Child
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                }
+              </div>
+            </div>
+          </ResizableBox>
+
+          {/* --- THE EDITOR --- */}
+          <div className="writing-space">
+            {activeTabId && isEditorOpen && editor ? (
+              <div className="editor-wrapper">
+                <EditorToolbar editor={editor} windows={windows} saveStatus={saveStatus} lastSaved={lastSaved} handleManualRetry={() => setWindows(p => ({...p}))} />
+                <EditorContent editor={editor} className="rich-editor" />
+                <div className="editor-footer">
+                  <div className="stat">Length: <span>{getEditorStats().chars}</span></div>
+                  <div className="stat">Words: <span>{getEditorStats().words}</span></div>
+                  <div className="stat">Lines: <span>{getEditorStats().lines}</span></div>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">
+                {activeTabId ? (
+                  <span>Editor hidden. Press <strong>ENTER</strong> to open.</span>
+                ) : (
+                  "Select an item to view/edit content."
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {isExportModalOpen && <ExportModal windows={windows} onClose={() => setIsExportModalOpen(false)} />}
+      
+      {/* NEW: Shortcuts Modal for the Help Menu */}
+      {showShortcuts && (
+        <div className="modal-overlay" onClick={() => setShowShortcuts(false)}>
+           <div className="export-modal" onClick={e => e.stopPropagation()}>
+             <h3 style={{color: 'var(--accent-color)', margin: '0 0 15px 0'}}>Keyboard Shortcuts</h3>
+             <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', fontSize: '13px', color: 'var(--text-main)'}}>
+                <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                  <span><strong>F2:</strong> Rename Tab</span>
+                  <span><strong>DEL:</strong> Delete Tab</span>
+                  <span><strong>CTRL+A:</strong> Add Child Tab</span>
+                  <span><strong>CTRL+E:</strong> Focus/Unfocus Editor</span>
+                </div>
+                <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                  <span><strong>ARROWS:</strong> Navigate tabs</span>
+                  <span><strong>ENTER:</strong> Open/Activate tab</span>
+                  <span><strong>CTRL+F:</strong> Find tabs/content</span>
+                  <span><strong>ALT+SHIFT+Up/Down:</strong> Move text</span>
+                </div>
+             </div>
+             <div className="modal-actions" style={{marginTop: '25px'}}>
+               <button className="confirm-btn" onClick={() => setShowShortcuts(false)}>Close</button>
+             </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 }

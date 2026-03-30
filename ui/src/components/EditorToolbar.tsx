@@ -5,7 +5,9 @@ import { Editor } from '@tiptap/react';
 import { 
   Heading1, Heading2, Heading3, Type, Bold, Italic, Strikethrough, 
   List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
-  Trash2, Link as LinkIcon, CheckSquare, MinusSquare
+  Trash2, Link as LinkIcon, CheckSquare, MinusSquare,
+  AlignLeft, AlignCenter, AlignRight,
+  ArrowUpToLine, ArrowDownToLine, FoldVertical, Palette
 } from 'lucide-react';
 import type { WindowData, SaveStatus } from '../types';
 
@@ -54,27 +56,65 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
           <button onClick={() => editor.chain().focus().setParagraph().run()} className={editor.isActive('paragraph') ? 'is-active' : ''} title="Paragraph"><Type size={18} /></button>
           
           <div className="tool-separator" />
-
           <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''} title="Bold"><Bold size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''} title="Italic"><Italic size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleStrike().run()} className={editor.isActive('strike') ? 'is-active' : ''} title="Strike"><Strikethrough size={18} /></button>
 
-          <div className="tool-separator" />
+          <div className="color-picker-wrapper">
+            <input
+              type="color"
+              onInput={e => editor.chain().focus().setColor((e.target as HTMLInputElement).value).run()}
+              value={editor.getAttributes('textStyle').color || '#000000'}
+              title="Text Color"
+            />
+          </div>
+          <div className="color-picker-wrapper">
+            <input
+              type="color"
+              onInput={e => editor.chain().focus().toggleHighlight({ color: (e.target as HTMLInputElement).value }).run()}
+              value={editor.getAttributes('highlight').color || '#ffff00'}
+              title="Background Color"
+            />
+          </div>
 
+          <div className="tool-separator" />
           <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={editor.isActive('taskList') ? 'is-active' : ''} title="Checklist"><CheckSquare size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={editor.isActive('bulletList') ? 'is-active' : ''} title="Bullet List"><List size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={editor.isActive('orderedList') ? 'is-active' : ''} title="Numbered List"><ListOrdered size={18} /></button>
+          {/* <button onClick={() => (editor.chain().focus() as any).toggleOrderedList({ listStyle: 'lower-alpha' }).run()} className={editor.isActive('orderedList', { listStyle: 'lower-alpha' }) ? 'is-active' : ''} title="Alphabet List"><Baseline size={18} /></button> */}
+          {/* <button onClick={() => editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { class: 'ordered-list-alpha' }).run()} className={editor.isActive('orderedList', { class: 'ordered-list-alpha' }) ? 'is-active' : ''} title="Alphabet List"><Baseline size={18} /></button> */}
 
           <div className="tool-separator" />
-
           <button onClick={() => document.getElementById('image-upload')?.click()} title="Upload Image"><ImageIcon size={18} /></button>
           <input id="image-upload" type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
-          
+        
           <button onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()} title="Insert Table"><TableIcon size={18} /></button>
           <button onClick={addInternalLink} className={editor.isActive('link') ? 'is-active' : ''} title="Add Wiki Link"><LinkIcon size={18} /></button>
 
           {editor.isActive('table') && (
             <>
+              <div className="tool-separator" />
+              {/* Horizontal Alignment */}
+              <button onClick={() => editor.chain().focus().setTextAlign('left').run()} title="Align Left"><AlignLeft size={18} /></button>
+              <button onClick={() => editor.chain().focus().setTextAlign('center').run()} title="Align Center"><AlignCenter size={18} /></button>
+              <button onClick={() => editor.chain().focus().setTextAlign('right').run()} title="Align Right"><AlignRight size={18} /></button>
+
+              <div className="tool-separator" />
+              {/* Vertical Alignment */}
+              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'top').run()} title="Align Top"><ArrowUpToLine size={18} /></button>
+              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'middle').run()} title="Align Middle"><FoldVertical size={18} /></button>
+              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'bottom').run()} title="Align Bottom"><ArrowDownToLine size={18} /></button>
+
+              <div className="tool-separator" />
+              {/* Cell Background Color */}
+              <label className="color-picker-btn" title="Cell Color">
+                <Palette size={18} />
+                <input 
+                  type="color" 
+                  onChange={(e) => editor.chain().focus().setCellAttribute('backgroundColor', e.target.value).run()}
+                  style={{ opacity: 0, position: 'absolute', width: '0' }}
+                />
+              </label>
               <div className="tool-separator" />
               <button onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Before">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">

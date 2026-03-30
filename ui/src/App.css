@@ -570,3 +570,171 @@ body.dark-theme .content-search-match {
   color: #fff;
   box-shadow: none;
 }
+/* --- NEW GLOBAL MENUBAR --- */
+.app-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-main);
+  overflow: hidden;
+}
+
+.global-menubar {
+  display: flex;
+  align-items: center;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 10px;
+  height: 40px;
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+.menu-item {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.menu-item > button {
+  background: transparent;
+  border: none;
+  font-weight: bold;
+  padding: 5px 10px;
+  height: 100%;
+}
+
+.menu-item > button:hover, .menu-item > button:focus {
+  background: var(--hover-color);
+}
+
+.dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  z-index: 1000;
+}
+
+.dropdown button {
+  text-align: left;
+  padding: 10px;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 0;
+  background: transparent;
+}
+
+.dropdown button:hover {
+  background: var(--hover-color);
+}
+
+.menubar-search {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+
+.menubar-search input {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.content-search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.search-nav {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  gap: 4px;
+}
+
+/* Color Picker Button Fake */
+.color-picker-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 3px;
+  color: var(--btn-text);
+  position: relative;
+}
+.color-picker-btn:hover {
+  background-color: var(--btn-hover);
+}
+
+/* Ensure app-container takes the rest of the height */
+.app-container {
+  height: calc(100vh - 40px);
+}
+/* Alphabetical list styling */
+/* .ordered-list-alpha {
+  list-style-type: lower-alpha !important;
+} */
+.color-picker-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+
+.color-picker-wrapper input[type="color"] {
+  border: none;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+}
+
+.color-picker-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-picker-wrapper input[type="color"]::-webkit-color-swatch {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+/* Dark Theme Menubar Overrides */
+body.dark-theme .global-menubar button,
+body.dark-theme .global-menubar .dropdown button {
+  color: #ffffff !important;
+}
+
+/* Optional: Ensure the search text and navigation labels (1/3) are also white */
+body.dark-theme .global-menubar input,
+body.dark-theme .global-menubar .search-nav span {
+  color: #ffffff;
+}
+
+/* Optional: Make the search input placeholders slightly lighter for better visibility */
+body.dark-theme .global-menubar input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Ensure the hover state on dropdown items remains readable */
+body.dark-theme .dropdown button:hover {
+  background-color: var(--hover-color);
+  color: var(--text-main) !important; /* Switch to dark text on light hover background if applicable */
+}
