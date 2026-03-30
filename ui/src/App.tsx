@@ -22,6 +22,7 @@ import TaskItem from '@tiptap/extension-task-item';
 import { Extension } from '@tiptap/core';
 import { TextSelection } from 'prosemirror-state';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { SearchHighlight } from './extensions/SearchHighlight';
 
 const API_URL = "http://localhost:8080";
 
@@ -32,7 +33,9 @@ const CustomEditorShortcuts = Extension.create({
     return {
       // Tab inserts an indent and prevents jumping through checkboxes/focus
       'Tab': () => {
-        return this.editor.commands.insertContent('\t');
+        // \u00A0 is a non-breaking space. 4 of them equals one tab indent.
+        // HTML will never strip these out when saving/loading.
+        return this.editor.commands.insertContent('\u00A0\u00A0\u00A0\u00A0');
       },
       
       // Move line/block up
@@ -116,6 +119,9 @@ export default function App() {
   
   // --- UI STATE ---
   const [globalSearch, setGlobalSearch] = useState("");
+  const [contentSearch, setContentSearch] = useState("");
+  const [contentMatches, setContentMatches] = useState<{tabId: string, title: string}[]>([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [globalSortMode, setGlobalSortMode] = useState<SortMode>('oldest');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('theme') === 'dark');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -165,6 +171,7 @@ export default function App() {
           class: 'external-link'
         } 
       }),
+      SearchHighlight,
     ],
     editorProps: {
       handleDOMEvents: {
@@ -589,6 +596,13 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [windows, activeTabId, editor?.getHTML()]);
 
+  // Sync the search term to the editor's highlight extension
+  useEffect(() => {
+    if (editor) {
+      editor.commands.setSearchTerm(contentSearch);
+    }
+  }, [contentSearch, activeTabId, editor]);
+
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
     setGlobalSearch(query);
@@ -606,6 +620,69 @@ export default function App() {
         activateTab(firstMatch);
       }
     }
+  };
+
+  // Helper to open the folder tree to the matched tab
+  const expandToTab = (tabId: string) => {
+    const path: string[] = [];
+    let currentId: string | null = tabId;
+    const allTabs = Object.values(windows).flatMap(w => w.tabs);
+    
+    while (currentId) {
+      const tab = allTabs.find(t => t.id === currentId);
+      if (tab && tab.parentId) {
+        path.push(tab.parentId);
+        currentId = tab.parentId;
+      } else {
+        break;
+      }
+    }
+    if (path.length > 0) {
+      setExpandedListNodes(prev => new Set([...prev, ...path]));
+    }
+  };
+
+  const handleContentSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value.toLowerCase();
+    setContentSearch(query);
+
+    if (!query.trim()) {
+      setContentMatches([]);
+      return;
+    }
+
+    const matches: {tabId: string, title: string}[] = [];
+    Object.values(windows).forEach(w => {
+      w.tabs.forEach(t => {
+        // Strip HTML tags to search only the plain text
+        const plainText = t.content.replace(/<[^>]*>?/gm, '').toLowerCase();
+        if (plainText.includes(query)) {
+          matches.push({ tabId: t.id, title: t.title });
+        }
+      });
+    });
+
+    setContentMatches(matches);
+    setCurrentMatchIndex(0);
+
+    // Auto-jump to first match
+    if (matches.length > 0) {
+      activateTab({ id: matches[0].tabId } as Tab);
+      expandToTab(matches[0].tabId);
+    }
+  };
+
+  const cycleMatch = (direction: 1 | -1) => {
+    if (contentMatches.length === 0) return;
+    let newIndex = currentMatchIndex + direction;
+    
+    // Wrap around logic
+    if (newIndex < 0) newIndex = contentMatches.length - 1;
+    if (newIndex >= contentMatches.length) newIndex = 0;
+    
+    setCurrentMatchIndex(newIndex);
+    activateTab({ id: contentMatches[newIndex].tabId } as Tab);
+    expandToTab(contentMatches[newIndex].tabId);
   };
 
   return (
@@ -672,8 +749,24 @@ export default function App() {
               </div>
             </div>
             
-            <div className="search-bar">
-              <input placeholder="Search tabs..." value={globalSearch} onChange={handleSearch} />
+            <div className="search-bar" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <input placeholder="Search tabs by title..." value={globalSearch} onChange={handleSearch} />
+              
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <input 
+                  placeholder="Search content..." 
+                  value={contentSearch} 
+                  onChange={handleContentSearch} 
+                  onKeyDown={(e) => { if (e.key === 'Enter') cycleMatch(1); }}
+                />
+                {contentMatches.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', fontSize: '11px', gap: '4px' }}>
+                    <button onClick={() => cycleMatch(-1)}>▲</button>
+                    <span>{currentMatchIndex + 1}/{contentMatches.length}</span>
+                    <button onClick={() => cycleMatch(1)}>▼</button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="tab-list tree-view">

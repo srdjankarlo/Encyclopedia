@@ -62,6 +62,7 @@ async fn main() {
 
     // 4. Start the Tauri Window System
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

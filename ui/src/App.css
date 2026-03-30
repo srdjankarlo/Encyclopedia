@@ -557,3 +557,16 @@ body.dark-theme .tab-row.search-highlight {
 .tiptap ul[data-type="taskList"] li > div {
   flex: 1 1 auto;
 }
+/* Editor Content Search Highlighting */
+.content-search-match {
+  background-color: #ffd54f;
+  color: #000;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #ffc107;
+}
+
+body.dark-theme .content-search-match {
+  background-color: rgba(255, 214, 0, 0.4);
+  color: #fff;
+  box-shadow: none;
+}
