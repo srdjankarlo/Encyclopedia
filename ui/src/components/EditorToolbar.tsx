@@ -7,7 +7,8 @@ import {
   List, ListOrdered, Image as ImageIcon, Table as TableIcon, 
   Trash2, Link as LinkIcon, CheckSquare, MinusSquare,
   AlignLeft, AlignCenter, AlignRight,
-  ArrowUpToLine, ArrowDownToLine, FoldVertical, Palette
+  ArrowUpToLine, ArrowDownToLine, FoldVertical, Palette,
+  Underline as UnderlineIcon, Baseline
 } from 'lucide-react';
 import type { WindowData, SaveStatus } from '../types';
 
@@ -58,6 +59,7 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
           <div className="tool-separator" />
           <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''} title="Bold"><Bold size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''} title="Italic"><Italic size={18} /></button>
+          <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={editor.isActive('underline') ? 'is-active' : ''} title="Underline"><UnderlineIcon size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleStrike().run()} className={editor.isActive('strike') ? 'is-active' : ''} title="Strike"><Strikethrough size={18} /></button>
 
           <div className="color-picker-wrapper">
@@ -81,6 +83,7 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
           <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={editor.isActive('taskList') ? 'is-active' : ''} title="Checklist"><CheckSquare size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={editor.isActive('bulletList') ? 'is-active' : ''} title="Bullet List"><List size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={editor.isActive('orderedList') ? 'is-active' : ''} title="Numbered List"><ListOrdered size={18} /></button>
+          <button onClick={() => editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { listStyleType: 'lower-alpha' }).run()} className={editor.isActive('orderedList', { listStyleType: 'lower-alpha' }) ? 'is-active' : ''} title="Alphabet List"><Baseline size={18} /></button>
           {/* <button onClick={() => (editor.chain().focus() as any).toggleOrderedList({ listStyle: 'lower-alpha' }).run()} className={editor.isActive('orderedList', { listStyle: 'lower-alpha' }) ? 'is-active' : ''} title="Alphabet List"><Baseline size={18} /></button> */}
           {/* <button onClick={() => editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { class: 'ordered-list-alpha' }).run()} className={editor.isActive('orderedList', { class: 'ordered-list-alpha' }) ? 'is-active' : ''} title="Alphabet List"><Baseline size={18} /></button> */}
 
@@ -95,15 +98,15 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
             <>
               <div className="tool-separator" />
               {/* Horizontal Alignment */}
-              <button onClick={() => editor.chain().focus().setTextAlign('left').run()} title="Align Left"><AlignLeft size={18} /></button>
-              <button onClick={() => editor.chain().focus().setTextAlign('center').run()} title="Align Center"><AlignCenter size={18} /></button>
-              <button onClick={() => editor.chain().focus().setTextAlign('right').run()} title="Align Right"><AlignRight size={18} /></button>
+              <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={editor.isActive({ textAlign: 'left' }) ? 'is-active' : ''} title="Align Left"><AlignLeft size={18} /></button>
+              <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={editor.isActive({ textAlign: 'center' }) ? 'is-active' : ''} title="Align Center"><AlignCenter size={18} /></button>
+              <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={editor.isActive({ textAlign: 'right' }) ? 'is-active' : ''} title="Align Right"><AlignRight size={18} /></button>
 
               <div className="tool-separator" />
               {/* Vertical Alignment */}
-              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'top').run()} title="Align Top"><ArrowUpToLine size={18} /></button>
-              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'middle').run()} title="Align Middle"><FoldVertical size={18} /></button>
-              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'bottom').run()} title="Align Bottom"><ArrowDownToLine size={18} /></button>
+              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'top').run()} className={editor.isActive('tableCell', { verticalAlign: 'top' }) ? 'is-active' : ''} title="Align Top"><ArrowUpToLine size={18} /></button>
+              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'middle').run()} className={editor.isActive('tableCell', { verticalAlign: 'middle' }) ? 'is-active' : ''} title="Align Middle"><FoldVertical size={18} /></button>
+              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'bottom').run()} className={editor.isActive('tableCell', { verticalAlign: 'bottom' }) ? 'is-active' : ''} title="Align Bottom"><ArrowDownToLine size={18} /></button>
 
               <div className="tool-separator" />
               {/* Cell Background Color */}

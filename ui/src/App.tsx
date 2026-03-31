@@ -27,8 +27,10 @@ import { TextAlign } from '@tiptap/extension-text-align';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Highlight } from '@tiptap/extension-highlight';
+import Underline from '@tiptap/extension-underline';
+import { invoke } from '@tauri-apps/api/core';
+import { Eye } from 'lucide-react';
 
-const API_URL = "http://localhost:8080";
 
 const CustomEditorShortcuts = Extension.create({
   name: 'customEditorShortcuts',
@@ -122,6 +124,7 @@ export default function App() {
   
   // NEW: Editor visibility state
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isEditorFocused, setIsEditorFocused] = useState(false);
   
   // --- UI STATE ---
   const [globalSearch, setGlobalSearch] = useState("");
@@ -160,28 +163,23 @@ export default function App() {
       TaskList, TaskItem.configure({ nested: true }),
       Heading.configure({ levels: [1, 2, 3] }),
       BulletList,
+      Underline,
       OrderedList,
       // CUSTOM ORDERED LIST (For a,b,c support)
-      // OrderedList.extend({
-      //   addAttributes() {
-      //     return {
-      //       ...this.parent?.(),
-      //       listStyle: {
-      //         default: 'decimal',
-      //         parseHTML: element => element.style.listStyleType || 'decimal',
-      //         renderHTML: attributes => ({ style: `list-style-type: ${attributes.listStyle}` }),
-      //       },
-      //     };
-      //   },
-      // }),
-      // OrderedList.configure({
-      //   HTMLAttributes: {
-      //     class: 'ordered-list',
-      //   },
-      //   // This allows the 'type' attribute (e.g., <ol type="a">) to be preserved
-      //   keepAttributes: true,
-      //   keepMarks: true,
-      // }),
+      OrderedList.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            listStyleType: {
+              default: 'decimal',
+              parseHTML: element => element.style.listStyleType || 'decimal',
+              renderHTML: attributes => {
+                return { style: `list-style-type: ${attributes.listStyleType}` };
+              },
+            },
+          };
+        },
+      }),
       // CUSTOM TABLE CELL (For background colors and vertical alignment)
       Table.configure({ resizable: true, lastColumnResizable: true, allowTableNodeSelection: true}),
       TableRow, TableHeader,
@@ -293,6 +291,8 @@ export default function App() {
         return next;
       });
     },
+    onFocus: () => setIsEditorFocused(true),
+    onBlur: () => setIsEditorFocused(false),
   }, [activeTabId]);
 
   useEffect(() => {
@@ -368,7 +368,7 @@ export default function App() {
 
     setWindows(next);
     if (activeTabId && idsToRemove.has(activeTabId)) setActiveTabId(null);
-    try { await fetch(`${API_URL}/tabs/${tabId}`, { method: 'DELETE' }); } catch (e) { console.error(e); }
+    try { await invoke('delete_tab', { id: tabId }); } catch (e) { console.error(e); }
   };
 
   // const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -466,8 +466,7 @@ export default function App() {
   useEffect(() => {
     const loadFromDb = async () => {
       try {
-        const res = await fetch(`${API_URL}/tabs`);
-        const dbTabs: any[] = await res.json();
+        const dbTabs: any[] = await invoke('get_tabs');
         if (!dbTabs || dbTabs.length === 0) return;
 
         const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
@@ -495,14 +494,12 @@ export default function App() {
       try {
         const promises = Object.entries(windows).flatMap(([winId, win]) => 
           win.tabs.map(tab => 
-            fetch(`${API_URL}/tabs`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
+            invoke('save_tab', {
+              tab: { 
                 id: tab.id, title: tab.title, content: tab.content, 
                 parent_id: winId === 'root' ? null : winId, 
                 child_window_id: tab.id, created_at: tab.createdAt 
-              }),
+              }
             })
           )
         );
@@ -863,6 +860,9 @@ export default function App() {
                     // Calculate if this tab has children to show the toggle arrow
                     const allTabs = Object.values(windows).flatMap(w => w.tabs);
                     const hasChildren = allTabs.some(t => t.parentId === tab.id);
+                    const isActiveTab = tab.id === activeTabId;
+                    // const showEye = isSearchMatch || isActiveTab;
+                    const showEye = isActiveTab && isEditorFocused
 
                     return (
                       <div key={tab.id}>
@@ -906,14 +906,12 @@ export default function App() {
                             />
                           ) : ( <span className="tab-title">{tab.title}</span> )}
                           
-                          <div className="tab-actions">
-                            <button tabIndex={-1} className="edit-btn" onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id); }}>✎</button>
-                            <button tabIndex={-1} className="del-btn" onClick={(e) => { 
-                              e.stopPropagation(); 
-                              const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === tab.id));
-                              if (winId) deleteTab(winId, tab.id);
-                            }}>✕</button>
-                          </div>
+                          {showEye && (
+                            <Eye 
+                              size={14} 
+                              className={`tab-eye-icon ${isActiveTab ? 'active-eye' : ''} ${isSearchMatch ? 'search-eye' : ''}`} 
+                            />
+                          )}
                         </div>
 
                         {activeTabId === tab.id && (

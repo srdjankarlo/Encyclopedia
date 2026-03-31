@@ -147,11 +147,15 @@ input:focus-visible {
 .tab-title { flex-grow: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-row input { background: var(--bg-input); border: 1px solid var(--accent-color); color: var(--text-main); padding: 2px 5px; width: 100%; outline: none; }
 .tab-actions { display: flex; gap: 8px; }
-.edit-btn, .del-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 0;}
-.edit-btn:hover { color: var(--text-main); }
-.del-btn:hover { color: var(--danger-color); }
 .add-btn { width: 100%; padding: 12px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; text-align: left; font-size: 12px; }
 .add-btn:hover { color: var(--text-main); background: var(--hover-color); }
+.active-eye-icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent-color);
+  opacity: 0.8;
+  margin-right: 5px;
+}
 
 /* 2. Style the Drag Handle for visibility */
 .drag-handle {
@@ -719,7 +723,7 @@ body.dark-theme .content-search-match {
 /* Dark Theme Menubar Overrides */
 body.dark-theme .global-menubar button,
 body.dark-theme .global-menubar .dropdown button {
-  color: #ffffff !important;
+  color: var(--text-main);
 }
 
 /* Optional: Ensure the search text and navigation labels (1/3) are also white */
@@ -737,4 +741,89 @@ body.dark-theme .global-menubar input::placeholder {
 body.dark-theme .dropdown button:hover {
   background-color: var(--hover-color);
   color: var(--text-main) !important; /* Switch to dark text on light hover background if applicable */
+}
+
+/* =========================
+   GLOBAL MENUBAR COLOR FIXES
+========================= */
+/* Force Top Menus to match search input text colors */
+.global-menubar > .menu-item > button {
+  color: var(--text-main);
+}
+
+/* Enhance hover visibility */
+.global-menubar > .menu-item > button:hover {
+  background-color: var(--hover-color);
+  color: var(--accent-color) !important;
+}
+
+body.dark-theme .global-menubar > .menu-item > button:hover {
+  background-color: #444444; 
+  color: #ffffff !important;
+}
+
+/* Dropdown children text matching */
+.dropdown button {
+  color: var(--text-main) !important;
+}
+
+body.dark-theme .dropdown button {
+  color: #ffffff !important;
+}
+
+/* Fix up/down arrows in Search Content being invisible in dark mode */
+.search-nav button {
+  background-color: var(--btn-bg);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+}
+
+body.dark-theme .search-nav button {
+  background-color: #333333;
+  color: #ffffff;
+  border: 1px solid #555555;
+}
+
+body.dark-theme .search-nav button:hover {
+  background-color: var(--accent-color);
+}
+
+/* =========================
+   DYNAMIC TAB HIGHLIGHTING
+========================= */
+/* Light Mode: Highlighted tabs get a deep blue bg and white text */
+.tab-row.search-highlight {
+  background-color: var(--accent-color);
+  border-color: #005999;
+}
+.tab-row.search-highlight .tab-title,
+.tab-row.search-highlight .tree-indicator {
+  color: #ffffff !important; 
+}
+
+/* Dark Mode: Highlighted tabs get a bright yellow bg and black text */
+body.dark-theme .tab-row.search-highlight {
+  background-color: #ffd600;
+  border-color: #cca300;
+  animation: none; /* Disable pulse to keep text highly readable */
+}
+body.dark-theme .tab-row.search-highlight .tab-title,
+body.dark-theme .tab-row.search-highlight .tree-indicator {
+  color: #000000 !important;
+}
+
+/* Base color for the Eye Icon (adapts to light/dark mode via your variables) */
+.tab-eye-icon {
+  color: var(--danger-color);
+  margin-left: 6px; /* Adjust spacing as needed */
+}
+
+/* Give it a distinct pop when it's the actively opened tab */
+.tab-eye-icon.active-eye {
+  color: var(--danger-color);
+}
+
+/* Optional: Different color for search matches if it's NOT the active tab */
+.tab-eye-icon.search-eye:not(.active-eye) {
+  color: #fbc02d; /* Matches your search highlight pulse */
 }
