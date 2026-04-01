@@ -30,6 +30,8 @@ import { Highlight } from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
 import { invoke } from '@tauri-apps/api/core';
 import { Eye } from 'lucide-react';
+import { appDataDir, join } from '@tauri-apps/api/path';
+const appDataDirPath = await appDataDir();
 
 
 const CustomEditorShortcuts = Extension.create({

@@ -7,6 +7,10 @@
   ],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "dialog:default",
+    "fs:allow-write-file",
+    "fs:allow-read-file",
+    "fs:allow-exists"
   ]
 }

@@ -457,10 +457,27 @@ ul[data-type="taskList"] li > div p {
 .modal-field input { background: var(--bg-sidebar); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 4px; width: 100%; box-sizing: border-box;}
 .tree-selector { flex-grow: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: center}
 .tree-container { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 15px; overflow-y: auto; max-height: 300px; }
-.modal-checkbox-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; cursor: pointer; }
+.modal-checkbox-row { 
+  display: flex; 
+  align-items: center; 
+  gap: 10px; 
+  padding: 4px 0; 
+  cursor: pointer; 
+}
 .modal-checkbox-row:hover { background: var(--hover-color); }
-.modal-tab-name { font-size: 13px; color: var(--text-main); }
-.modal-checkbox-row input[type="checkbox"] { accent-color: var(--accent-color); cursor: pointer; }
+.modal-checkbox-row input[type="checkbox"] { 
+  accent-color: var(--accent-color); 
+  cursor: pointer; 
+  margin: 0; 
+  padding: 0;
+  display: inline-block;
+}
+.modal-tab-name { 
+  font-size: 13px; 
+  color: var(--text-main); 
+  line-height: 1; /* Stops text line-height from pushing the checkbox down */
+  display: inline-block;
+}
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px; }
 .confirm-btn { background: var(--accent-color); color: white; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; }
 .cancel-btn { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); padding: 10px 20px; border-radius: 4px; }
@@ -746,19 +763,27 @@ body.dark-theme .dropdown button:hover {
 /* =========================
    GLOBAL MENUBAR COLOR FIXES
 ========================= */
-/* Force Top Menus to match search input text colors */
-.global-menubar > .menu-item > button {
-  color: var(--text-main);
+.global-menubar > .menu-item > button,
+.dropdown button {
+  color: var(--text-main) !important;
 }
+
+/* Force Top Menus to match search input text colors */
+/* .global-menubar > .menu-item > button {
+  color: var(--text-main);
+} */
 
 /* Enhance hover visibility */
-.global-menubar > .menu-item > button:hover {
-  background-color: var(--hover-color);
-  color: var(--accent-color) !important;
+.global-menubar > .menu-item > button:hover,
+.dropdown button:hover {
+  background-color: var(--hover-color) !important;
+  color: var(--text-main) !important;
 }
 
-body.dark-theme .global-menubar > .menu-item > button:hover {
-  background-color: #444444; 
+/* Dark theme specific overrides */
+body.dark-theme .global-menubar > .menu-item > button:hover,
+body.dark-theme .dropdown button:hover {
+  background-color: #444444 !important;
   color: #ffffff !important;
 }
 
@@ -814,15 +839,17 @@ body.dark-theme .tab-row.search-highlight .tree-indicator {
 
 /* Base color for the Eye Icon (adapts to light/dark mode via your variables) */
 .tab-eye-icon {
-  color: var(--danger-color);
+  color: var(--text-main);
   margin-left: 6px; /* Adjust spacing as needed */
 }
 
 /* Give it a distinct pop when it's the actively opened tab */
 .tab-eye-icon.active-eye {
-  color: var(--danger-color);
+  color: var(--text-main);
 }
-
+.tab-row.active .tab-eye-icon {
+  color: inherit !important; /* Forces the eye to match the active text perfectly */
+}
 /* Optional: Different color for search matches if it's NOT the active tab */
 .tab-eye-icon.search-eye:not(.active-eye) {
   color: #fbc02d; /* Matches your search highlight pulse */

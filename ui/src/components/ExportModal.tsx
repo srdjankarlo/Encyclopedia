@@ -1,7 +1,12 @@
 // src/components/ExportModal.tsx
-// custom pop-up logic for exporting the database to text or JSON
 import { useState, useEffect } from 'react';
 import type { Tab, WindowData } from '../types';
+import { open } from '@tauri-apps/plugin-dialog';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
+import { join } from '@tauri-apps/api/path';
+// @ts-ignore - html2pdf doesn't have official TS types
+import html2pdf from 'html2pdf.js';
 
 interface ExportModalProps {
   windows: Record<string, WindowData>;
@@ -11,9 +16,10 @@ interface ExportModalProps {
 export default function ExportModal({ windows, onClose }: ExportModalProps) {
   const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(new Set());
   const [exportFileName, setExportFileName] = useState('My_Encyclopedia');
-  const [exportFormat, setExportFormat] = useState<'txt' | 'json'>('txt');
+  const [destinationPath, setDestinationPath] = useState<string>('');
+  const [exportFormat, setExportFormat] = useState<'txt' | 'json' | 'pdf'>('txt');
+  const [isExporting, setIsExporting] = useState(false);
 
-  // Select all tabs by default on mount
   useEffect(() => {
     setSelectedTabIds(new Set(Object.values(windows).flatMap(w => w.tabs.map(t => t.id))));
   }, [windows]);
@@ -28,9 +34,99 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
     setSelectedTabIds(next);
   };
 
-  const handleFinalExport = () => {
+  const handleSelectFolder = async () => {
+    const selectedFolder = await open({
+      directory: true,
+      multiple: false,
+      title: "Select Export Destination"
+    });
+    if (selectedFolder) setDestinationPath(selectedFolder as string);
+  };
+
+  // --- CUSTOM HTML TO TEXT PARSER ---
+  const parseHTMLToText = (html: string) => {
+    const container = document.createElement('div');
+    container.innerHTML = html;
+
+    // Replace Images
+    container.querySelectorAll('img').forEach(img => {
+      img.parentNode?.replaceChild(document.createTextNode('[IMAGE]'), img);
+    });
+
+    // Replace Links
+    container.querySelectorAll('a').forEach(a => {
+      const href = a.getAttribute('href');
+      // Only append URL if it's an external link
+      if (href && href.startsWith('http')) {
+        a.parentNode?.replaceChild(document.createTextNode(`${a.textContent} (${href})`), a);
+      } else {
+        a.parentNode?.replaceChild(document.createTextNode(`${a.textContent}`), a);
+      }
+    });
+
+    // Replace Task Lists (Checkboxes)
+    container.querySelectorAll('ul[data-type="taskList"] li').forEach(li => {
+      const checkbox = li.querySelector('input[type="checkbox"]') as HTMLInputElement;
+      const isChecked = checkbox?.checked || li.getAttribute('data-checked') === 'true';
+      const box = isChecked ? '[x] ' : '[ ] ';
+      const label = li.querySelector('label');
+      if (label) label.remove();
+      li.prepend(document.createTextNode(box));
+    });
+
+    // Replace Standard Bullet Lists
+    container.querySelectorAll('ul:not([data-type="taskList"]) li').forEach(li => {
+      li.prepend(document.createTextNode('* '));
+    });
+
+    // Replace Ordered Lists (Numbers & Alpha)
+    container.querySelectorAll('ol').forEach(ol => {
+      const type = ol.style.listStyleType || ol.getAttribute('type') || 'decimal';
+      ol.querySelectorAll(':scope > li').forEach((li, index) => {
+        let prefix = `${index + 1}. `;
+        if (type.includes('alpha')) {
+          prefix = `${String.fromCharCode(97 + index)}. `; // lower-alpha (a, b, c)
+        }
+        li.prepend(document.createTextNode(prefix));
+      });
+    });
+
+    // Replace Tables
+    container.querySelectorAll('table').forEach(table => {
+      let tableText = '\n';
+      table.querySelectorAll('tr').forEach(tr => {
+        let rowText = '| ';
+        tr.querySelectorAll('td, th').forEach(cell => {
+          rowText += `${cell.textContent?.trim() || ''} | `;
+        });
+        tableText += rowText + '\n';
+        
+        // Add divider under header row
+        if (tr.querySelector('th')) {
+          tableText += '|' + '_'.repeat(rowText.length - 3) + '|\n';
+        }
+      });
+      table.parentNode?.replaceChild(document.createTextNode(tableText), table);
+    });
+
+    // Add spacing to blocks
+    container.querySelectorAll('p, h1, h2, h3').forEach(block => {
+      block.appendChild(document.createTextNode('\n\n'));
+    });
+
+    return container.textContent?.replace(/\n{3,}/g, '\n\n').trim() || '';
+  };
+
+  const handleFinalExport = async () => {
+    if (!destinationPath) {
+      alert("Please select a destination folder first!");
+      return;
+    }
+
+    setIsExporting(true);
     const exportList: any[] = [];
     
+    // Gather Data
     const walk = (winId: string, depth: number, parentTitle: string = "Root") => {
       const win = windows[winId];
       if (!win) return;
@@ -45,30 +141,73 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
         }
       });
     };
-
     walk('root', 0);
 
-    let blob: Blob;
-    if (exportFormat === 'json') {
-      blob = new Blob([JSON.stringify(exportList, null, 2)], { type: 'application/json' });
-    } else {
-      const formattedText = exportList.map(item => {
-        const prefix = "=".repeat(item.depth + 1) + " ";
-        const cleanContent = item.content.replace(/<[^>]*>/g, '\n');
-        return `${prefix}${item.title.toUpperCase()} (Source: ${item.fromParent})\n${cleanContent}\n\n`;
-      }).join('\n');
-      blob = new Blob([formattedText], { type: 'text/plain' });
+    const fullPath = await join(destinationPath, `${exportFileName}.${exportFormat}`);
+
+    try {
+      if (exportFormat === 'json') {
+        const jsonData = JSON.stringify(exportList, null, 2);
+        await writeFile(fullPath, new TextEncoder().encode(jsonData));
+      } 
+      
+      else if (exportFormat === 'txt') {
+        let formattedText = `Destination: ${destinationPath}\nFile Name: ${exportFileName}.txt\n\n`;
+        formattedText += exportList.map(item => {
+          const parsedContent = parseHTMLToText(item.content);
+          return `${item.title.toUpperCase()} (Source: ${item.fromParent})\n${parsedContent}\n\n`;
+        }).join('\n');
+        
+        await writeFile(fullPath, new TextEncoder().encode(formattedText));
+      }
+      
+      else if (exportFormat === 'pdf') {
+        // Build a temporary HTML wrapper for the PDF engine
+        const container = document.createElement('div');
+        container.style.padding = '20px';
+        container.style.fontFamily = 'Arial, sans-serif';
+        
+        const header = document.createElement('h1');
+        header.innerText = `Encyclopedia Report: ${exportFileName}`;
+        header.style.textAlign = 'center';
+        container.appendChild(header);
+
+        exportList.forEach(item => {
+          const section = document.createElement('div');
+          section.style.marginBottom = '30px';
+          section.innerHTML = `
+            <h2 style="color: #007acc; border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+              ${item.title} <span style="font-size: 12px; color: #888;">(Source: ${item.fromParent})</span>
+            </h2>
+            <div style="font-size: 14px; line-height: 1.6;">${item.content}</div>
+          `;
+          container.appendChild(section);
+        });
+
+        // Configure PDF Generation
+        const opt = {
+          margin: 0.5,
+          filename: `${exportFileName}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+
+        // Generate ArrayBuffer and save via Tauri
+        const pdfBytes = await html2pdf().set(opt as any).from(container).output('arraybuffer');
+        await writeFile(fullPath, new Uint8Array(pdfBytes));
+      }
+
+      alert(`Successfully saved to:\n${fullPath}`);
+      onClose();
+    } catch (error) {
+      console.error("Export Error:", error);
+      alert("An error occurred while saving the file. Check the console.");
+    } finally {
+      setIsExporting(false);
     }
-    
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${exportFileName}.${exportFormat}`;
-    a.click();
-    onClose();
   };
 
-  // Recursive component for the tree view
   const ExportTreeNode = ({ winId, depth }: { winId: string; depth: number }) => {
     const win = windows[winId];
     if (!win || win.tabs.length === 0) return null;
@@ -77,11 +216,7 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
         {win.tabs.map(tab => (
           <div key={tab.id}>
             <label className="modal-checkbox-row">
-              <input 
-                type="checkbox" 
-                checked={selectedTabIds.has(tab.id)} 
-                onChange={(e) => toggleTabSelection(tab, e.target.checked)} 
-              />
+              <input type="checkbox" checked={selectedTabIds.has(tab.id)} onChange={(e) => toggleTabSelection(tab, e.target.checked)} />
               <span className="modal-tab-name">{tab.title}</span>
             </label>
             {windows[tab.id] && <ExportTreeNode winId={tab.id} depth={depth + 1} />}
@@ -94,25 +229,41 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="export-modal large" onClick={e => e.stopPropagation()}>
-        <h3 style={{color: '#007acc', margin: '0 0 15px 0'}}>Export Configuration</h3>
+        <h3 style={{color: 'var(--accent-color)', margin: '0 0 15px 0'}}>Export Configuration</h3>
+        
+        {/* DESTINATION FOLDER (NEW) */}
+        <div className="modal-field">
+          <label>Destination Folder</label>
+          <div style={{display: 'flex', gap: '10px'}}>
+            <input readOnly value={destinationPath} placeholder="Select a folder..." style={{flexGrow: 1}} />
+            <button className="confirm-btn" style={{padding: '10px'}} onClick={handleSelectFolder}>Browse</button>
+          </div>
+        </div>
+
         <div className="modal-field">
           <label>File Name</label>
           <input value={exportFileName} onChange={e => setExportFileName(e.target.value)} />
         </div>
+        
         <div className="modal-field tree-selector">
           <label>Select Content to Export</label>
           <div className="tree-container"><ExportTreeNode winId="root" depth={0} /></div>
         </div>
+        
         <div className="modal-field">
           <label>Format</label>
           <div className="button-row">
             <button className={exportFormat === 'txt' ? 'active' : ''} onClick={() => setExportFormat('txt')}>Text Document</button>
             <button className={exportFormat === 'json' ? 'active' : ''} onClick={() => setExportFormat('json')}>Database (JSON)</button>
+            <button className={exportFormat === 'pdf' ? 'active' : ''} onClick={() => setExportFormat('pdf')}>PDF Report</button>
           </div>
         </div>
+        
         <div className="modal-actions">
-          <button className="cancel-btn" onClick={onClose}>Cancel</button>
-          <button className="confirm-btn" onClick={handleFinalExport}>Download {selectedTabIds.size} Items</button>
+          <button className="cancel-btn" onClick={onClose} disabled={isExporting}>Cancel</button>
+          <button className="confirm-btn" onClick={handleFinalExport} disabled={isExporting}>
+            {isExporting ? 'Generating...' : `Save ${selectedTabIds.size} Items`}
+          </button>
         </div>
       </div>
     </div>
