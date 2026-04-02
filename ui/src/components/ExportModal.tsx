@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react';
 import type { Tab, WindowData } from '../types';
 import { open } from '@tauri-apps/plugin-dialog';
-import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 // @ts-ignore - html2pdf doesn't have official TS types
@@ -91,21 +90,121 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
       });
     });
 
-    // Replace Tables
+    // Replace Tables (Advanced multi-line, alignment, and colspan support)
     container.querySelectorAll('table').forEach(table => {
-      let tableText = '\n';
-      table.querySelectorAll('tr').forEach(tr => {
-        let rowText = '| ';
-        tr.querySelectorAll('td, th').forEach(cell => {
-          rowText += `${cell.textContent?.trim() || ''} | `;
-        });
-        tableText += rowText + '\n';
+      let rowsData: { lines: string[], colspan: number, align: string, colIndex: number }[][] = [];
+      let colWidths: number[] = [];
+
+      // Pass 1: Parse cells, preserve line breaks, and get base column widths
+      table.querySelectorAll('tr').forEach((tr) => {
+        let rowCells: any[] = [];
+        let colIndex = 0;
         
-        // Add divider under header row
-        if (tr.querySelector('th')) {
-          tableText += '|' + '_'.repeat(rowText.length - 3) + '|\n';
+        tr.querySelectorAll('td, th').forEach(cell => {
+          let colspan = parseInt(cell.getAttribute('colspan') || '1', 10);
+          let align = (cell as HTMLElement).style.textAlign || 'left';
+          
+          // Preserve line breaks from TipTap's block elements (<p> and <br>)
+          let html = cell.innerHTML
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<\/div>/gi, '\n')
+            .replace(/<p[^>]*>/gi, '')
+            .replace(/<div[^>]*>/gi, '');
+          
+          let dummy = document.createElement('div');
+          dummy.innerHTML = html;
+          let text = dummy.textContent || '';
+          
+          // Split into lines and clean up trailing spaces
+          let textLines = text.split('\n')
+            .map(l => l.trim())
+            .filter((l, i, arr) => l !== '' || arr.length === 1); // keep empty string only if cell is totally empty
+            
+          if (textLines.length === 0) textLines = [''];
+
+          rowCells.push({ lines: textLines, colspan, align, colIndex });
+
+          // Update column widths (only for single-span cells first to establish a baseline)
+          if (colspan === 1) {
+            let maxLineLen = Math.max(...textLines.map(l => l.length));
+            colWidths[colIndex] = Math.max(colWidths[colIndex] || 0, maxLineLen);
+          }
+          colIndex += colspan;
+        });
+        rowsData.push(rowCells);
+      });
+
+      // Pass 2: Adjust column widths to safely fit colspan contents if they are wider than the merged columns
+      rowsData.forEach(row => {
+        row.forEach(cell => {
+          if (cell.colspan > 1) {
+            let maxLineLen = Math.max(...cell.lines.map((l: string) => l.length));
+            let currentSpanWidth = 0;
+            // Add up the widths of all columns this cell spans
+            for (let i = 0; i < cell.colspan; i++) {
+              currentSpanWidth += (colWidths[cell.colIndex + i] || 0);
+            }
+            // Add the width of the skipped internal dividers (" | " = 3 spaces)
+            currentSpanWidth += (cell.colspan - 1) * 3; 
+            
+            // If the text is still wider than the combined columns, widen the last column
+            if (maxLineLen > currentSpanWidth) {
+              let extra = maxLineLen - currentSpanWidth;
+              colWidths[cell.colIndex + cell.colspan - 1] = (colWidths[cell.colIndex + cell.colspan - 1] || 0) + extra;
+            }
+          }
+        });
+      });
+
+      let tableText = '\n';
+      
+      // Pass 3: Draw the table row by row, line by line
+      rowsData.forEach((row, rowIndex) => {
+        // Find how many vertical text lines this table row requires
+        let maxLines = Math.max(...row.map(c => c.lines.length));
+        
+        for (let lineIdx = 0; lineIdx < maxLines; lineIdx++) {
+          let rowText = '| ';
+          
+          row.forEach(cell => {
+            let text = cell.lines[lineIdx] || ''; // If this cell has fewer lines, print blank space
+            
+            // Calculate exact character width this cell block is allowed to consume
+            let targetWidth = 0;
+            for (let i = 0; i < cell.colspan; i++) {
+              targetWidth += (colWidths[cell.colIndex + i] || 0);
+            }
+            targetWidth += (cell.colspan - 1) * 3;
+
+            // Apply Alignment Padding
+            let paddedText = '';
+            if (cell.align === 'center') {
+              let leftPad = Math.floor((targetWidth - text.length) / 2);
+              let rightPad = targetWidth - text.length - leftPad;
+              paddedText = ' '.repeat(Math.max(0, leftPad)) + text + ' '.repeat(Math.max(0, rightPad));
+            } else if (cell.align === 'right') {
+              paddedText = text.padStart(targetWidth, ' ');
+            } else {
+              paddedText = text.padEnd(targetWidth, ' '); // Default Left Align
+            }
+
+            rowText += paddedText + ' | ';
+          });
+          
+          tableText += rowText.trimEnd() + '\n';
+        }
+        
+        // Add divider exactly matching the column sizes under the header row
+        if (rowIndex === 0 && table.querySelector('th')) {
+          let dividerRow = '|';
+          colWidths.forEach(w => {
+            dividerRow += '-'.repeat(w + 2) + '|';
+          });
+          tableText += dividerRow + '\n';
         }
       });
+
       table.parentNode?.replaceChild(document.createTextNode(tableText), table);
     });
 
@@ -166,6 +265,16 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
         const container = document.createElement('div');
         container.style.padding = '20px';
         container.style.fontFamily = 'Arial, sans-serif';
+
+        // NEW: Inject CSS so tables are drawn correctly in the PDF
+        const style = document.createElement('style');
+        style.innerHTML = `
+          table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+          th, td { border: 1px solid #999; padding: 8px; text-align: left; vertical-align: top; }
+          th { background-color: #f0f0f0; font-weight: bold; }
+          img { max-width: 100%; height: auto; }
+        `;
+        container.appendChild(style);
         
         const header = document.createElement('h1');
         header.innerText = `Encyclopedia Report: ${exportFileName}`;

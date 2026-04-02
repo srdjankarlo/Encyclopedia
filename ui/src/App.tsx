@@ -30,8 +30,6 @@ import { Highlight } from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
 import { invoke } from '@tauri-apps/api/core';
 import { Eye } from 'lucide-react';
-import { appDataDir, join } from '@tauri-apps/api/path';
-const appDataDirPath = await appDataDir();
 
 
 const CustomEditorShortcuts = Extension.create({
@@ -130,6 +128,8 @@ export default function App() {
   
   // --- UI STATE ---
   const [globalSearch, setGlobalSearch] = useState("");
+  const [globalMatches, setGlobalMatches] = useState<Tab[]>([]);
+  const [currentGlobalIndex, setCurrentGlobalIndex] = useState(0);
   const [contentSearch, setContentSearch] = useState("");
   const [contentMatches, setContentMatches] = useState<{tabId: string, title: string}[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
@@ -372,30 +372,6 @@ export default function App() {
     if (activeTabId && idsToRemove.has(activeTabId)) setActiveTabId(null);
     try { await invoke('delete_tab', { id: tabId }); } catch (e) { console.error(e); }
   };
-
-  // const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-  //   const file = e.target.files?.[0];
-  //   if (!file) return;
-  //   const reader = new FileReader();
-  //   reader.onload = (event) => {
-  //     try {
-  //       const importedData: any[] = JSON.parse(event.target?.result as string);
-  //       const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
-  //       const idMap: Record<string, string> = {}; 
-  //       importedData.forEach(item => { idMap[item.title] = `tab-${Math.random().toString(36).substring(2, 11)}`; });
-
-  //       [...importedData].sort((a, b) => (a.depth || 0) - (b.depth || 0)).forEach(item => {
-  //         const newId = idMap[item.title];
-  //         const targetWinId = (item.fromParent !== "Root" && idMap[item.fromParent]) ? idMap[item.fromParent] : 'root';
-  //         if (!newWindows[targetWinId]) newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
-  //         newWindows[targetWinId].tabs.push({ id: newId, title: item.title, content: item.content, createdAt: item.createdAt || Date.now() });
-  //         if (!newWindows[newId]) newWindows[newId] = { id: newId, tabs: [], collapsed: false };
-  //       });
-  //       setWindows(newWindows);
-  //     } catch (err) { alert("Import failed: Ensure you are using a valid JSON export file."); }
-  //   };
-  //   reader.readAsText(file);
-  // };
 
   const getEditorStats = () => {
     if (!editor) return { chars: 0, words: 0, lines: 0 };
@@ -679,19 +655,37 @@ export default function App() {
     const query = e.target.value;
     setGlobalSearch(query);
 
-    // If there is text in the search bar, auto-open the path to the first match
-    if (query.trim() !== '') {
-      const searchLower = query.toLowerCase();
-      const allTabs = Object.values(windows).flatMap(w => w.tabs);
-      
-      // Find the first tab anywhere in the tree that matches the query
-      const firstMatch = allTabs.find(t => t.title.toLowerCase().includes(searchLower));
-      
-      if (firstMatch) {
-        // This existing function naturally expands the Miller columns to this tab!
-        activateTab(firstMatch);
-      }
+    if (query.trim() === '') {
+      setGlobalMatches([]);
+      return;
     }
+
+    const searchLower = query.toLowerCase();
+    const allTabs = Object.values(windows).flatMap(w => w.tabs);
+    
+    // Find ALL tabs that match
+    const matches = allTabs.filter(t => t.title.toLowerCase().includes(searchLower));
+    
+    setGlobalMatches(matches);
+    setCurrentGlobalIndex(0);
+
+    if (matches.length > 0) {
+      activateTab(matches[0]);
+      expandToTab(matches[0].id);
+    }
+  };
+
+  const cycleGlobalMatch = (direction: 1 | -1) => {
+    if (globalMatches.length === 0) return;
+    let newIndex = currentGlobalIndex + direction;
+    
+    // Wrap around logic
+    if (newIndex < 0) newIndex = globalMatches.length - 1;
+    if (newIndex >= globalMatches.length) newIndex = 0;
+    
+    setCurrentGlobalIndex(newIndex);
+    activateTab(globalMatches[newIndex]);
+    expandToTab(globalMatches[newIndex].id);
   };
 
   // Helper to open the folder tree to the matched tab
@@ -812,7 +806,23 @@ export default function App() {
         
         {/* Right side search bars */}
         <div className="menubar-search">
-          <input placeholder="Search tabs by title..." value={globalSearch} onChange={handleSearch} />
+          {/* TAB TITLE SEARCH WITH ARROWS */}
+          <div className="content-search-wrapper">
+            <input 
+              placeholder="Search tabs by title..." 
+              value={globalSearch} 
+              onChange={handleSearch} 
+              onKeyDown={(e) => { if (e.key === 'Enter') cycleGlobalMatch(1); }}
+            />
+            {globalMatches.length > 0 && (
+              <div className="search-nav">
+                <button onClick={() => cycleGlobalMatch(-1)}>▲</button>
+                <span>{currentGlobalIndex + 1}/{globalMatches.length}</span>
+                <button onClick={() => cycleGlobalMatch(1)}>▼</button>
+              </div>
+            )}
+          </div>
+          {/* CONTENT SEARCH WITH ARROWS*/}
           <div className="content-search-wrapper">
             <input 
               placeholder="Search content..." 
