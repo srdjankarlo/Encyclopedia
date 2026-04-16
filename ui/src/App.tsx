@@ -37,21 +37,14 @@ const CustomEditorShortcuts = Extension.create({
 
   addKeyboardShortcuts() {
     return {
-      // Tab inserts an indent and prevents jumping through checkboxes/focus
-      'Tab': () => {
-        // \u00A0 is a non-breaking space. 4 of them equals one tab indent.
-        // HTML will never strip these out when saving/loading.
-        return this.editor.commands.insertContent('\u00A0\u00A0\u00A0\u00A0');
-      },
-      
-      // Move line/block up
+      'Tab': () => this.editor.commands.insertContent('\u00A0\u00A0\u00A0\u00A0'),
       'Shift-Alt-ArrowUp': () => {
         const { state, dispatch } = this.editor.view;
         const { selection, tr } = state;
         const { $from, $to } = selection;
 
         const range = $from.blockRange($to);
-        if (!range || range.startIndex === 0) return false; // Already at the top
+        if (!range || range.startIndex === 0) return false;
 
         const parent = range.parent;
         const nodeBefore = parent.child(range.startIndex - 1);
@@ -62,12 +55,10 @@ const CustomEditorShortcuts = Extension.create({
         const beforePos = startPos - beforeSize;
 
         if (dispatch) {
-          // Slice the current block, delete it, and re-insert it above the previous block
           const slice = state.doc.slice(startPos, endPos);
           tr.delete(startPos, endPos);
           tr.insert(beforePos, slice.content);
           
-          // Map the selection to follow the moved text
           const mappedFrom = tr.doc.resolve($from.pos - beforeSize);
           const mappedTo = tr.doc.resolve($to.pos - beforeSize);
           tr.setSelection(TextSelection.between(mappedFrom, mappedTo));
@@ -76,8 +67,6 @@ const CustomEditorShortcuts = Extension.create({
         }
         return true;
       },
-
-      // Move line/block down
       'Shift-Alt-ArrowDown': () => {
         const { state, dispatch } = this.editor.view;
         const { selection, tr } = state;
@@ -87,7 +76,7 @@ const CustomEditorShortcuts = Extension.create({
         if (!range) return false;
 
         const parent = range.parent;
-        if (range.endIndex === parent.childCount) return false; // Already at the bottom
+        if (range.endIndex === parent.childCount) return false;
 
         const nodeAfter = parent.child(range.endIndex);
         const afterSize = nodeAfter.nodeSize;
@@ -96,12 +85,10 @@ const CustomEditorShortcuts = Extension.create({
         const endPos = range.end;
 
         if (dispatch) {
-          // Slice the current block, delete it, and re-insert it below the next block
           const slice = state.doc.slice(startPos, endPos);
           tr.delete(startPos, endPos);
           tr.insert(startPos + afterSize, slice.content);
 
-          // Map the selection to follow the moved text
           const mappedFrom = tr.doc.resolve($from.pos + afterSize);
           const mappedTo = tr.doc.resolve($to.pos + afterSize);
           tr.setSelection(TextSelection.between(mappedFrom, mappedTo));
@@ -115,18 +102,18 @@ const CustomEditorShortcuts = Extension.create({
 });
 
 export default function App() {
-  // --- CORE STATE ---
   const [windows, setWindows] = useState<Record<string, WindowData>>({ 'root': { id: 'root', tabs: [] } });
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   
-  // NEW: Editor visibility state
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   
-  // --- UI STATE ---
+  // NEW: Zoom state for CTRL + Scroll
+  const [zoomLevel, setZoomLevel] = useState(100);
+
   const [globalSearch, setGlobalSearch] = useState("");
   const [globalMatches, setGlobalMatches] = useState<Tab[]>([]);
   const [currentGlobalIndex, setCurrentGlobalIndex] = useState(0);
@@ -137,13 +124,9 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('theme') === 'dark');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   
-  // NEW: List view specific width state so it remembers stretching
   const [listViewWidth, setListViewWidth] = useState(350);
-
-  // NEW: Track expanded items in List View
   const [expandedListNodes, setExpandedListNodes] = useState<Set<string>>(new Set());
   
-  // --- SYNC STATE ---
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   
@@ -155,34 +138,42 @@ export default function App() {
     windowsRef.current = windows;
   }, [windows]);
 
+  // NEW: Ctrl + Wheel Zoom Listener for the Editor
+  useEffect(() => {
+    const handleWheelZoom = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        const target = e.target as HTMLElement;
+        if (target.closest('.rich-editor')) {
+          e.preventDefault(); // Stop standard browser zoom
+          setZoomLevel(prev => {
+            const next = prev - Math.sign(e.deltaY) * 10;
+            return Math.min(Math.max(next, 50), 300); // Bounds: 50% to 300%
+          });
+        }
+      }
+    };
+    window.addEventListener('wheel', handleWheelZoom, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheelZoom);
+  }, []);
+
   const editor = useEditor({
     extensions: [
       CustomEditorShortcuts,
       StarterKit.configure({ heading: false, bulletList: false, orderedList: false, dropcursor: {} }),
-      TextStyle,
-      Color,
-      Highlight.configure({ multicolor: true }),
+      TextStyle, Color, Highlight.configure({ multicolor: true }),
       TaskList, TaskItem.configure({ nested: true }),
-      Heading.configure({ levels: [1, 2, 3] }),
-      BulletList,
-      Underline,
-      OrderedList,
-      // CUSTOM ORDERED LIST (For a,b,c support)
+      Heading.configure({ levels: [1, 2, 3] }), BulletList, Underline, OrderedList,
       OrderedList.extend({
         addAttributes() {
           return {
             ...this.parent?.(),
             listStyleType: {
-              default: 'decimal',
-              parseHTML: element => element.style.listStyleType || 'decimal',
-              renderHTML: attributes => {
-                return { style: `list-style-type: ${attributes.listStyleType}` };
-              },
+              default: 'decimal', parseHTML: element => element.style.listStyleType || 'decimal',
+              renderHTML: attributes => ({ style: `list-style-type: ${attributes.listStyleType}` }),
             },
           };
         },
       }),
-      // CUSTOM TABLE CELL (For background colors and vertical alignment)
       Table.configure({ resizable: true, lastColumnResizable: true, allowTableNodeSelection: true}),
       TableRow, TableHeader,
       TableCell.extend({
@@ -190,19 +181,16 @@ export default function App() {
           return {
             ...this.parent?.(),
             backgroundColor: {
-              default: null,
-              parseHTML: element => element.getAttribute('data-bg-color'),
+              default: null, parseHTML: element => element.getAttribute('data-bg-color'),
               renderHTML: attributes => attributes.backgroundColor ? { 'data-bg-color': attributes.backgroundColor, style: `background-color: ${attributes.backgroundColor}` } : {},
             },
             verticalAlign: {
-              default: 'top',
-              parseHTML: element => element.style.verticalAlign || 'top',
+              default: 'top', parseHTML: element => element.style.verticalAlign || 'top',
               renderHTML: attributes => ({ style: `vertical-align: ${attributes.verticalAlign}` }),
             }
           };
         }
       }),
-      // 3. TEXT ALIGNMENT (For horizontal alignment in cells)
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       (ImageResize as any).configure({
         inline: false, allowBase64: true, HTMLAttributes: { class: 'resizable-image' },
@@ -215,64 +203,34 @@ export default function App() {
         },
       }),
       WikiLink,
-      // Link.configure({ openOnClick: false, autolink: false, HTMLAttributes: { class: 'wiki-link', target: null, rel: null } }),
-      // EXTERNAL WEB LINKS CONFIG
-      Link.configure({ 
-        openOnClick: false,
-        autolink: true,    // Auto-detects URLs
-        HTMLAttributes: { 
-          class: 'external-link'
-        } 
-      }),
+      Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { class: 'external-link' } }),
       SearchHighlight,
     ],
     editorProps: {
       handleDOMEvents: {
         click: (_view, event) => {
           const target = event.target as HTMLElement;
-
-          // --- 1. HANDLE WIKI LINKS (Existing) ---
           const wikiSpan = target.closest('.wiki-link');
           if (wikiSpan) {
             const tabId = wikiSpan.getAttribute('data-tab-id');
             const tabExists = Object.values(windows).some(w => w.tabs.some(t => t.id === tabId));
-            if (!tabExists) {
-              wikiSpan.setAttribute('data-broken', 'true'); 
-              alert("This tab has been deleted and the link is broken."); 
-              return true;
-            }
-            handleInternalNavigation(tabId!); 
-            return true;
+            if (!tabExists) { wikiSpan.setAttribute('data-broken', 'true'); alert("Link broken."); return true; }
+            handleInternalNavigation(tabId!); return true;
           }
-
-          // --- 2. HANDLE EXTERNAL LINKS (New) ---
           const externalLink = target.closest('a.external-link') as HTMLAnchorElement;
           if (externalLink && externalLink.href) {
-            event.preventDefault(); // Stop the app from trying to navigate internally
-            
-            // Call the Tauri Opener API
-            openUrl(externalLink.href).catch(console.error);
-            
-            return true; // Mark event as handled
+            event.preventDefault(); openUrl(externalLink.href).catch(console.error); return true; 
           }
-
           return false;
         },
-        // NEW: Double-click to auto-fit table columns
         dblclick: (_view, event) => {
           const target = event.target as HTMLElement;
           if (target.classList.contains('column-resize-handle')) {
-            // If they double click the resizer, remove the fixed width from the column 
-            // so the browser naturally snaps it to the text width.
             const cell = target.closest('td, th') as HTMLElement;
             if (cell) {
               const cellIndex = Array.from(cell.parentElement!.children).indexOf(cell);
-              const table = cell.closest('table');
-              const colgroup = table?.querySelector('colgroup');
-              if (colgroup) {
-                const col = colgroup.children[cellIndex] as HTMLElement;
-                if (col) col.removeAttribute('width'); // Resets to auto-fit
-              }
+              const colgroup = cell.closest('table')?.querySelector('colgroup');
+              if (colgroup) colgroup.children[cellIndex]?.removeAttribute('width');
               return true;
             }
           }
@@ -299,35 +257,23 @@ export default function App() {
 
   useEffect(() => {
     if (!editor || !activeTabId) return;
-
     const handleUpdate = () => {
       const html = editor.getHTML();
-      
-      // Check if content actually changed to avoid unnecessary state updates
-      const currentTab = Object.values(windowsRef.current)
-        .flatMap(w => w.tabs)
-        .find(t => t.id === activeTabId);
-
+      const currentTab = Object.values(windowsRef.current).flatMap(w => w.tabs).find(t => t.id === activeTabId);
       if (currentTab && currentTab.content === html) return;
-
       setWindows(prev => {
         const next = { ...prev };
         for (const winId in next) {
           const tab = next[winId].tabs.find(t => t.id === activeTabId);
-          if (tab) { 
-            tab.content = html; 
-            break; 
-          }
+          if (tab) { tab.content = html; break; }
         }
         return next;
       });
     };
-
     editor.on('update', handleUpdate);
     return () => { editor.off('update', handleUpdate); };
   }, [editor, activeTabId]);
 
-  // --- ACTIONS ---
   const addTab = async (windowId: string) => {
     const win = windows[windowId];
     if (!win) return;
@@ -357,7 +303,7 @@ export default function App() {
   };
 
   const deleteTab = async (windowId: string, tabId: string) => {
-    if (!window.confirm("Delete this item and all sub-items?")) return;
+    // Note: The window.confirm check has been moved to the event listener directly
     const next = { ...windows };
     const idsToRemove = new Set<string>();
 
@@ -373,49 +319,66 @@ export default function App() {
     try { await invoke('delete_tab', { id: tabId }); } catch (e) { console.error(e); }
   };
 
+  // NEW: Calculate both total stats and current cursor position
   const getEditorStats = () => {
-    if (!editor) return { chars: 0, words: 0, lines: 0 };
+    if (!editor) return { stats: { chars: 0, words: 0, lines: 0 }, cursor: { char: 0, word: 0, line: 0 } };
+    
     const text = editor.getText();
-    return { chars: text.length, words: text.trim() ? text.trim().split(/\s+/).length : 0, lines: text.split(/\r\n|\r|\n/).length };
+    const stats = { 
+      chars: text.length, 
+      words: text.trim() ? text.trim().split(/\s+/).length : 0, 
+      lines: text.split(/\r\n|\r|\n/).length 
+    };
+
+    const { from } = editor.state.selection;
+    const textBefore = editor.state.doc.textBetween(0, from, '\n');
+    const cursor = {
+      char: textBefore.length,
+      word: textBefore.trim() ? textBefore.trim().split(/\s+/).length : 0,
+      line: textBefore.split('\n').length
+    };
+
+    return { stats, cursor };
   };
 
-  // --- HELPERS ---
   const getFilteredAndSortedTabs = (tabs: Tab[]) => {
-    return [...tabs]
-      .sort((a, b) => {
-        if (globalSortMode === 'alpha') return a.title.localeCompare(b.title, undefined, { numeric: true });
-        if (globalSortMode === 'alpha-desc') return b.title.localeCompare(a.title, undefined, { numeric: true });
-        if (globalSortMode === 'newest') return b.createdAt - a.createdAt;
-        return a.createdAt - b.createdAt; 
-      });
+    return [...tabs].sort((a, b) => {
+      if (globalSortMode === 'alpha') return a.title.localeCompare(b.title, undefined, { numeric: true });
+      if (globalSortMode === 'alpha-desc') return b.title.localeCompare(a.title, undefined, { numeric: true });
+      if (globalSortMode === 'newest') return b.createdAt - a.createdAt;
+      return a.createdAt - b.createdAt; 
+    });
   };
 
   const getFlattenedTabs = (allTabs: Tab[], parentId: string | null = null, depth = 0): (Tab & { depth: number })[] => {
     const children = allTabs.filter(t => t.parentId === (parentId === 'root' ? null : parentId));
     const sortedChildren = getFilteredAndSortedTabs(children);
     let result: (Tab & { depth: number })[] = [];
-    
-    // If the user is searching, force all branches open so matches are visible
     const isSearchActive = globalSearch.trim() !== '';
 
     sortedChildren.forEach(child => {
       result.push({ ...child, depth });
-      // NEW: Only fetch grandchildren if this node is expanded or we are searching
       if (isSearchActive || expandedListNodes.has(child.id)) {
-        const grandchildren = getFlattenedTabs(allTabs, child.id, depth + 1);
-        result = [...result, ...grandchildren];
+        result = [...result, ...getFlattenedTabs(allTabs, child.id, depth + 1)];
       }
     });
     return result;
   };
 
-  const activateTab = (tab: Tab) => {
-    setActiveTabId(tab.id);
+  const activateTab = (tab: Tab) => setActiveTabId(tab.id);
+
+  // Helper: Smoothly scroll the sidebar to a specific tab
+  const scrollToTabInSidebar = (tabId: string) => {
+    setTimeout(() => {
+      const element = document.getElementById(`tab-row-${tabId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 50);
   };
 
-  // --- EDITOR SETUP ---
   const handleInternalNavigation = (tabId: string) => {
-    activateTab({ id: tabId } as Tab); // Rough mock to trigger trace
+    activateTab({ id: tabId } as Tab);
     setTimeout(() => {
       const element = document.getElementById(`tab-row-${tabId}`);
       if (element) {
@@ -434,13 +397,11 @@ export default function App() {
     return () => { editor.off('selectionUpdate', updateHandler); editor.off('transaction', updateHandler); };
   }, [editor]);
 
-  // --- THEME EFFECT ---
   useEffect(() => {
     document.body.classList.toggle('dark-theme', isDarkMode);
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // --- DB LOAD EFFECT ---
   useEffect(() => {
     const loadFromDb = async () => {
       try {
@@ -453,10 +414,7 @@ export default function App() {
         dbTabs.forEach(t => {
           const targetWinId = t.parent_id || 'root';
           if (!newWindows[targetWinId]) newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
-          newWindows[targetWinId].tabs.push({
-            id: t.id, title: t.title, content: t.content, 
-            createdAt: Number(t.created_at), parentId: t.parent_id
-          });
+          newWindows[targetWinId].tabs.push({ id: t.id, title: t.title, content: t.content, createdAt: Number(t.created_at), parentId: t.parent_id });
         });
         setWindows(newWindows);
       } catch (e) { console.error("❌ DB Load failed", e); }
@@ -464,22 +422,13 @@ export default function App() {
     loadFromDb();
   }, []);
 
-  // --- AUTO-SAVE EFFECT ---
   useEffect(() => {
     if (isInitialMount.current) { isInitialMount.current = false; return; }
     setSaveStatus('saving');
     const timer = setTimeout(async () => {
       try {
         const promises = Object.entries(windows).flatMap(([winId, win]) => 
-          win.tabs.map(tab => 
-            invoke('save_tab', {
-              tab: { 
-                id: tab.id, title: tab.title, content: tab.content, 
-                parent_id: winId === 'root' ? null : winId, 
-                child_window_id: tab.id, created_at: tab.createdAt 
-              }
-            })
-          )
+          win.tabs.map(tab => invoke('save_tab', { tab: { id: tab.id, title: tab.title, content: tab.content, parent_id: winId === 'root' ? null : winId, child_window_id: tab.id, created_at: tab.createdAt } }))
         );
         await Promise.all(promises);
         setSaveStatus('saved');
@@ -489,70 +438,51 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [windows]);
 
-  // --- GLOBAL KEYBOARD LOGIC ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isInsideEditor = target.closest('.rich-editor');
       const isInput = ['INPUT', 'TEXTAREA'].includes(target.tagName);
 
-      // 1. Ctrl + E: Toggle editor focus
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
         e.preventDefault();
-        if (isInsideEditor) {
-          (document.activeElement as HTMLElement)?.blur();
-          document.getElementById(`tab-row-${activeTabId}`)?.focus();
-        } else if (activeTabId) {
-          if (!isEditorOpen) setIsEditorOpen(true);
-          setTimeout(() => editor?.commands.focus('end'), 50);
-        }
+        if (isInsideEditor) { (document.activeElement as HTMLElement)?.blur(); document.getElementById(`tab-row-${activeTabId}`)?.focus(); } 
+        else if (activeTabId) { if (!isEditorOpen) setIsEditorOpen(true); setTimeout(() => editor?.commands.focus('end'), 50); }
         return;
       }
 
-      // Ctrl + A Logic
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-        // If we are NOT in the editor and NOT in an input field (like the search bar)
         if (!isInsideEditor && !isInput) {
-          e.preventDefault(); // Stop the browser from selecting everything
-          if (activeTabId) {
-            addTab(activeTabId).then(newId => {
-              if (newId) setActiveTabId(newId);
-            });
-          }
+          e.preventDefault(); 
+          if (activeTabId) addTab(activeTabId).then(newId => { if (newId) setActiveTabId(newId); });
           return;
         }
-        // If we ARE in the editor or input, we do nothing and let the default Select All happen
       }
 
-      // Ignore standard key presses if renaming a tab or typing in an input
       if (editingTabId || (isInput && !isInsideEditor)) return;
 
-      // 2. Action Shortcuts (F2, Delete, Enter)
       if (activeTabId && !isInsideEditor) {
-        if (e.key === 'F2') {
-          e.preventDefault();
-          setEditingTabId(activeTabId);
-          return;
-        }
+        if (e.key === 'F2') { e.preventDefault(); setEditingTabId(activeTabId); return; }
+        
+        // NEW FIX: Only proceed if they hit 'OK' on the browser dialog.
         if (e.key === 'Delete') {
           e.preventDefault();
           const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === activeTabId));
-          if (winId) deleteTab(winId, activeTabId);
+          if (winId) {
+            // Evaluates before any logic triggers
+            if (window.confirm("Delete this item and all sub-items?")) {
+              deleteTab(winId, activeTabId);
+            }
+          }
           return;
         }
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          setIsEditorOpen(prev => !prev);
-          return;
-        }
+        
+        if (e.key === 'Enter') { e.preventDefault(); setIsEditorOpen(prev => !prev); return; }
       }
 
-      // 3. Arrow Navigation
       const isArrow = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
       if (isArrow && !isInsideEditor) {
         e.preventDefault();
-
-        // Jump to active if none is focused
         if (!activeTabId) {
           const rootTabs = getFilteredAndSortedTabs(windows['root']?.tabs || []);
           if (rootTabs.length > 0) activateTab(rootTabs[0]);
@@ -568,11 +498,7 @@ export default function App() {
         const searchLower = globalSearch.toLowerCase().trim();
 
         let nextTab: Tab | undefined;
-
-        // Helper to get correctly sorted & filtered siblings/children
-        const getVisible = (parentId: string | null) => 
-          getFilteredAndSortedTabs(allTabs.filter(t => t.parentId === parentId))
-            .filter(t => searchLower === '' || t.title.toLowerCase().includes(searchLower));
+        const getVisible = (parentId: string | null) => getFilteredAndSortedTabs(allTabs.filter(t => t.parentId === parentId)).filter(t => searchLower === '' || t.title.toLowerCase().includes(searchLower));
 
         if (e.key === 'ArrowDown') {
           const siblings = getVisible(activeTab.parentId ?? null);
@@ -585,27 +511,15 @@ export default function App() {
           if (idx > 0) nextTab = siblings[idx - 1];
         }
         else if (e.key === 'ArrowRight') {
-          if (hasChildren && !isExpanded) {
-            // 1. Expand children if collapsed
-            setExpandedListNodes(prev => new Set(prev).add(activeTab.id));
-          } else if (hasChildren && isExpanded) {
-            // 2. Move to first child if already expanded
+          if (hasChildren && !isExpanded) setExpandedListNodes(prev => new Set(prev).add(activeTab.id));
+          else if (hasChildren && isExpanded) {
             const children = getVisible(activeTab.id);
             if (children.length > 0) nextTab = children[0];
           }
         }
         else if (e.key === 'ArrowLeft') {
-          if (hasChildren && isExpanded) {
-            // 1. Collapse children if expanded
-            setExpandedListNodes(prev => {
-              const next = new Set(prev);
-              next.delete(activeTab.id);
-              return next;
-            });
-          } else if (activeTab.parentId) {
-            // 2. Move to parent if already collapsed (or leaf node)
-            nextTab = allTabs.find(t => t.id === activeTab.parentId);
-          }
+          if (hasChildren && isExpanded) setExpandedListNodes(prev => { const next = new Set(prev); next.delete(activeTab.id); return next; });
+          else if (activeTab.parentId) nextTab = allTabs.find(t => t.id === activeTab.parentId);
         }
 
         if (nextTab) {
@@ -644,51 +558,10 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [windows, activeTabId, editor?.getHTML()]);
 
-  // Sync the search term to the editor's highlight extension
   useEffect(() => {
-    if (editor) {
-      editor.commands.setSearchTerm(contentSearch);
-    }
+    if (editor) editor.commands.setSearchTerm(contentSearch);
   }, [contentSearch, activeTabId, editor]);
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
-    setGlobalSearch(query);
-
-    if (query.trim() === '') {
-      setGlobalMatches([]);
-      return;
-    }
-
-    const searchLower = query.toLowerCase();
-    const allTabs = Object.values(windows).flatMap(w => w.tabs);
-    
-    // Find ALL tabs that match
-    const matches = allTabs.filter(t => t.title.toLowerCase().includes(searchLower));
-    
-    setGlobalMatches(matches);
-    setCurrentGlobalIndex(0);
-
-    if (matches.length > 0) {
-      activateTab(matches[0]);
-      expandToTab(matches[0].id);
-    }
-  };
-
-  const cycleGlobalMatch = (direction: 1 | -1) => {
-    if (globalMatches.length === 0) return;
-    let newIndex = currentGlobalIndex + direction;
-    
-    // Wrap around logic
-    if (newIndex < 0) newIndex = globalMatches.length - 1;
-    if (newIndex >= globalMatches.length) newIndex = 0;
-    
-    setCurrentGlobalIndex(newIndex);
-    activateTab(globalMatches[newIndex]);
-    expandToTab(globalMatches[newIndex].id);
-  };
-
-  // Helper to open the folder tree to the matched tab
   const expandToTab = (tabId: string) => {
     const path: string[] = [];
     let currentId: string | null = tabId;
@@ -696,42 +569,55 @@ export default function App() {
     
     while (currentId) {
       const tab = allTabs.find(t => t.id === currentId);
-      if (tab && tab.parentId) {
-        path.push(tab.parentId);
-        currentId = tab.parentId;
-      } else {
-        break;
-      }
+      if (tab && tab.parentId) { path.push(tab.parentId); currentId = tab.parentId; } 
+      else break;
     }
-    if (path.length > 0) {
-      setExpandedListNodes(prev => new Set([...prev, ...path]));
+    if (path.length > 0) setExpandedListNodes(prev => new Set([...prev, ...path]));
+  };
+
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setGlobalSearch(query);
+    if (query.trim() === '') { setGlobalMatches([]); return; }
+
+    const searchLower = query.toLowerCase();
+    const matches = Object.values(windows).flatMap(w => w.tabs).filter(t => t.title.toLowerCase().includes(searchLower));
+    
+    setGlobalMatches(matches);
+    setCurrentGlobalIndex(0);
+
+    if (matches.length > 0) {
+      activateTab(matches[0]);
+      expandToTab(matches[0].id);
+      scrollToTabInSidebar(matches[0].id);
     }
+  };
+
+  const cycleGlobalMatch = (direction: 1 | -1) => {
+    if (globalMatches.length === 0) return;
+    let newIndex = currentGlobalIndex + direction;
+    if (newIndex < 0) newIndex = globalMatches.length - 1;
+    if (newIndex >= globalMatches.length) newIndex = 0;
+    
+    setCurrentGlobalIndex(newIndex);
+    activateTab(globalMatches[newIndex]);
+    expandToTab(globalMatches[newIndex].id);
+    scrollToTabInSidebar(globalMatches[newIndex].id);
   };
 
   const handleContentSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value.toLowerCase();
     setContentSearch(query);
-
-    if (!query.trim()) {
-      setContentMatches([]);
-      return;
-    }
+    if (!query.trim()) { setContentMatches([]); return; }
 
     const matches: {tabId: string, title: string}[] = [];
-    Object.values(windows).forEach(w => {
-      w.tabs.forEach(t => {
-        // Strip HTML tags to search only the plain text
-        const plainText = t.content.replace(/<[^>]*>?/gm, '').toLowerCase();
-        if (plainText.includes(query)) {
-          matches.push({ tabId: t.id, title: t.title });
-        }
-      });
-    });
+    Object.values(windows).forEach(w => w.tabs.forEach(t => {
+      if (t.content.replace(/<[^>]*>?/gm, '').toLowerCase().includes(query)) matches.push({ tabId: t.id, title: t.title });
+    }));
 
     setContentMatches(matches);
     setCurrentMatchIndex(0);
 
-    // Auto-jump to first match
     if (matches.length > 0) {
       activateTab({ id: matches[0].tabId } as Tab);
       expandToTab(matches[0].tabId);
@@ -741,20 +627,29 @@ export default function App() {
   const cycleMatch = (direction: 1 | -1) => {
     if (contentMatches.length === 0) return;
     let newIndex = currentMatchIndex + direction;
-    
-    // Wrap around logic
     if (newIndex < 0) newIndex = contentMatches.length - 1;
     if (newIndex >= contentMatches.length) newIndex = 0;
     
     setCurrentMatchIndex(newIndex);
     activateTab({ id: contentMatches[newIndex].tabId } as Tab);
     expandToTab(contentMatches[newIndex].tabId);
+
+    // NEW: Scroll the editor content directly to the highlighted text
+    setTimeout(() => {
+      // The editor needs a moment to load the new content and apply the yellow decorations
+      setTimeout(() => {
+        const matchElements = document.querySelectorAll('.content-search-match');
+        if (matchElements.length > 0) {
+          matchElements[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+    }, 50);
   };
+
+  const { stats, cursor } = getEditorStats();
 
   return (
     <div className={`app-wrapper ${isDarkMode ? 'dark-theme' : ''}`}>
-      
-      {/* --- NEW GLOBAL MENUBAR --- */}
       <div className="global-menubar">
         <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
           <button onMouseEnter={() => setActiveMenu('data')} onClick={() => setActiveMenu(activeMenu === 'data' ? null : 'data')}>Data</button>
@@ -785,11 +680,8 @@ export default function App() {
               <button onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</button>
               <button onClick={() => {
                 const allTabs = Object.values(windows).flatMap(w => w.tabs);
-                if (expandedListNodes.size > 0) {
-                  setExpandedListNodes(new Set()); // Collapse all
-                } else {
-                  setExpandedListNodes(new Set(allTabs.map(t => t.id))); // Expand all
-                }
+                if (expandedListNodes.size > 0) setExpandedListNodes(new Set());
+                else setExpandedListNodes(new Set(allTabs.map(t => t.id)));
               }}>{expandedListNodes.size > 0 ? 'Collapse All' : 'Expand All'}</button>
             </div>
           )}
@@ -804,16 +696,9 @@ export default function App() {
           )}
         </div>
         
-        {/* Right side search bars */}
         <div className="menubar-search">
-          {/* TAB TITLE SEARCH WITH ARROWS */}
           <div className="content-search-wrapper">
-            <input 
-              placeholder="Search tabs by title..." 
-              value={globalSearch} 
-              onChange={handleSearch} 
-              onKeyDown={(e) => { if (e.key === 'Enter') cycleGlobalMatch(1); }}
-            />
+            <input placeholder="Search tabs by title..." value={globalSearch} onChange={handleSearch} onKeyDown={(e) => { if (e.key === 'Enter') cycleGlobalMatch(1); }} />
             {globalMatches.length > 0 && (
               <div className="search-nav">
                 <button onClick={() => cycleGlobalMatch(-1)}>▲</button>
@@ -822,14 +707,8 @@ export default function App() {
               </div>
             )}
           </div>
-          {/* CONTENT SEARCH WITH ARROWS*/}
           <div className="content-search-wrapper">
-            <input 
-              placeholder="Search content..." 
-              value={contentSearch} 
-              onChange={handleContentSearch} 
-              onKeyDown={(e) => { if (e.key === 'Enter') cycleMatch(1); }} 
-            />
+            <input placeholder="Search content..." value={contentSearch} onChange={handleContentSearch} onKeyDown={(e) => { if (e.key === 'Enter') cycleMatch(1); }} />
             {contentMatches.length > 0 && (
               <div className="search-nav">
                 <button onClick={() => cycleMatch(-1)}>▲</button>
@@ -841,39 +720,20 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- EXISTING APP CONTAINER --- */}
       <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}>
         <div className="miller-columns">
-          {/* Use state for width so List View remembers resizing */}
-          <ResizableBox 
-            width={listViewWidth} height={Infinity} axis="x" 
-            onResize={(_e, { size }) => setListViewWidth(size.width)}
-            minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]}
-            handle={<div className="drag-handle" />}
-          >
+          <ResizableBox width={listViewWidth} height={Infinity} axis="x" onResize={(_e, { size }) => setListViewWidth(size.width)} minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]} handle={<div className="drag-handle" />} >
             <div className="column" style={{ width: '100%' }}>
-              {/* Cleaned up column header since controls moved to top menu */}
-              <div className="column-header" style={{ borderBottom: 'none' }}>
-                <span className="header-title">LIBRARY</span>
-              </div>
-
+              <div className="column-header" style={{ borderBottom: 'none' }}><span className="header-title">LIBRARY</span></div>
               <div className="tab-list tree-view">
                 <div className="root-footer">
-                  <button tabIndex={-1} className="add-btn" onClick={async () => {
-                      const newId = await addTab('root');
-                      if (newId) setActiveTabId(newId);
-                    }}> + Add New Root Item
-                  </button>
+                  <button tabIndex={-1} className="add-btn" onClick={async () => { const newId = await addTab('root'); if (newId) setActiveTabId(newId); }}> + Add New Root Item</button>
                 </div>
-                {getFlattenedTabs(Object.values(windows).flatMap(w => w.tabs))
-                  .map(tab => {
+                {getFlattenedTabs(Object.values(windows).flatMap(w => w.tabs)).map(tab => {
                     const isSearchMatch = globalSearch.trim() !== '' && tab.title.toLowerCase().includes(globalSearch.toLowerCase());
-
-                    // Calculate if this tab has children to show the toggle arrow
                     const allTabs = Object.values(windows).flatMap(w => w.tabs);
                     const hasChildren = allTabs.some(t => t.parentId === tab.id);
                     const isActiveTab = tab.id === activeTabId;
-                    // const showEye = isSearchMatch || isActiveTab;
                     const showEye = isActiveTab && isEditorFocused
 
                     return (
@@ -884,57 +744,28 @@ export default function App() {
                           onClick={() => activateTab(tab)}
                           style={{ paddingLeft: `${(tab as any).depth * 20 + 12}px` }}
                         >
-                          {/* NEW: Clickable Expand/Collapse Arrow */}
-                          <span 
-                            className="tree-indicator" 
-                            style={{ cursor: hasChildren ? 'pointer' : 'default' }}
-                            onClick={(e) => {
+                          <span className="tree-indicator" style={{ cursor: hasChildren ? 'pointer' : 'default' }} onClick={(e) => {
                               if (hasChildren) {
-                                e.stopPropagation(); // Don't trigger the tab selection
-                                setExpandedListNodes(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(tab.id)) next.delete(tab.id);
-                                  else next.add(tab.id);
-                                  return next;
-                                });
+                                e.stopPropagation();
+                                setExpandedListNodes(prev => { const next = new Set(prev); if (next.has(tab.id)) next.delete(tab.id); else next.add(tab.id); return next; });
                               }
                             }}
                           >
                             {hasChildren ? (expandedListNodes.has(tab.id) ? '▼' : '▶') : '•'}
                           </span>
                           {editingTabId === tab.id ? (
-                            <input 
-                              autoFocus value={tab.title} 
-                              onBlur={() => setEditingTabId(null)} 
-                              onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} 
-                              onChange={(e) => {
+                            <input autoFocus value={tab.title} onBlur={() => setEditingTabId(null)} onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} onChange={(e) => {
                                 const next = { ...windows };
-                                Object.keys(next).forEach(winId => {
-                                  const t = next[winId].tabs.find(i => i.id === tab.id);
-                                  if (t) t.title = e.target.value;
-                                });
+                                Object.keys(next).forEach(winId => { const t = next[winId].tabs.find(i => i.id === tab.id); if (t) t.title = e.target.value; });
                                 setWindows(next);
                               }}
                             />
                           ) : ( <span className="tab-title">{tab.title}</span> )}
-                          
-                          {showEye && (
-                            <Eye 
-                              size={14} 
-                              className={`tab-eye-icon ${isActiveTab ? 'active-eye' : ''} ${isSearchMatch ? 'search-eye' : ''}`} 
-                            />
-                          )}
+                          {showEye && ( <Eye size={14} className={`tab-eye-icon ${isActiveTab ? 'active-eye' : ''} ${isSearchMatch ? 'search-eye' : ''}`} /> )}
                         </div>
-
                         {activeTabId === tab.id && (
                           <div className="tab-list-actions" style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}>
-                            <button tabIndex={-1} className="add-btn" onClick={async () => {
-                                const newId = await addTab(tab.id);
-                                if (newId) {
-                                  setActiveTabId(newId);
-                                }
-                              }}>+ Add Child
-                            </button>
+                            <button tabIndex={-1} className="add-btn" onClick={async () => { const newId = await addTab(tab.id); if (newId) setActiveTabId(newId); }}>+ Add Child</button>
                           </div>
                         )}
                       </div>
@@ -945,25 +776,23 @@ export default function App() {
             </div>
           </ResizableBox>
 
-          {/* --- THE EDITOR --- */}
           <div className="writing-space">
             {activeTabId && isEditorOpen && editor ? (
               <div className="editor-wrapper">
                 <EditorToolbar editor={editor} windows={windows} saveStatus={saveStatus} lastSaved={lastSaved} handleManualRetry={() => setWindows(p => ({...p}))} />
-                <EditorContent editor={editor} className="rich-editor" />
+                {/* NEW: Apply the zoom level directly to the editor content */}
+                <EditorContent editor={editor} className="rich-editor" style={{ zoom: `${zoomLevel}%` }} />
+                
+                {/* NEW: Updated Footer with Cursor Stats */}
                 <div className="editor-footer">
-                  <div className="stat">Length: <span>{getEditorStats().chars}</span></div>
-                  <div className="stat">Words: <span>{getEditorStats().words}</span></div>
-                  <div className="stat">Lines: <span>{getEditorStats().lines}</span></div>
+                  <div className="stat">Length: <span>{stats.chars}</span> <span style={{opacity:0.6, fontWeight:'normal'}}>(Pos: {cursor.char})</span></div>
+                  <div className="stat">Words: <span>{stats.words}</span> <span style={{opacity:0.6, fontWeight:'normal'}}>(Pos: {cursor.word})</span></div>
+                  <div className="stat">Lines: <span>{stats.lines}</span> <span style={{opacity:0.6, fontWeight:'normal'}}>(Pos: {cursor.line})</span></div>
                 </div>
               </div>
             ) : (
               <div className="empty-state">
-                {activeTabId ? (
-                  <span>Editor hidden. Press <strong>ENTER</strong> to open.</span>
-                ) : (
-                  "Select an item to view/edit content."
-                )}
+                {activeTabId ? <span>Editor hidden. Press <strong>ENTER</strong> to open.</span> : "Select an item to view/edit content."}
               </div>
             )}
           </div>
@@ -972,7 +801,6 @@ export default function App() {
 
       {isExportModalOpen && <ExportModal windows={windows} onClose={() => setIsExportModalOpen(false)} />}
       
-      {/* NEW: Shortcuts Modal for the Help Menu */}
       {showShortcuts && (
         <div className="modal-overlay" onClick={() => setShowShortcuts(false)}>
            <div className="export-modal" onClick={e => e.stopPropagation()}>
@@ -988,6 +816,7 @@ export default function App() {
                   <span><strong>ARROWS:</strong> Navigate tabs</span>
                   <span><strong>ENTER:</strong> Open/Activate tab</span>
                   <span><strong>CTRL+F:</strong> Find tabs/content</span>
+                  <span><strong>CTRL+Scroll:</strong> Zoom In/Out Editor</span>
                   <span><strong>ALT+SHIFT+Up/Down:</strong> Move text</span>
                 </div>
              </div>

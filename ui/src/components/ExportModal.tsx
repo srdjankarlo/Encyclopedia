@@ -42,20 +42,16 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
     if (selectedFolder) setDestinationPath(selectedFolder as string);
   };
 
-  // --- CUSTOM HTML TO TEXT PARSER ---
   const parseHTMLToText = (html: string) => {
     const container = document.createElement('div');
     container.innerHTML = html;
 
-    // Replace Images
     container.querySelectorAll('img').forEach(img => {
       img.parentNode?.replaceChild(document.createTextNode('[IMAGE]'), img);
     });
 
-    // Replace Links
     container.querySelectorAll('a').forEach(a => {
       const href = a.getAttribute('href');
-      // Only append URL if it's an external link
       if (href && href.startsWith('http')) {
         a.parentNode?.replaceChild(document.createTextNode(`${a.textContent} (${href})`), a);
       } else {
@@ -63,7 +59,6 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
       }
     });
 
-    // Replace Task Lists (Checkboxes)
     container.querySelectorAll('ul[data-type="taskList"] li').forEach(li => {
       const checkbox = li.querySelector('input[type="checkbox"]') as HTMLInputElement;
       const isChecked = checkbox?.checked || li.getAttribute('data-checked') === 'true';
@@ -73,29 +68,26 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
       li.prepend(document.createTextNode(box));
     });
 
-    // Replace Standard Bullet Lists
     container.querySelectorAll('ul:not([data-type="taskList"]) li').forEach(li => {
       li.prepend(document.createTextNode('* '));
     });
 
-    // Replace Ordered Lists (Numbers & Alpha)
     container.querySelectorAll('ol').forEach(ol => {
       const type = ol.style.listStyleType || ol.getAttribute('type') || 'decimal';
       ol.querySelectorAll(':scope > li').forEach((li, index) => {
         let prefix = `${index + 1}. `;
         if (type.includes('alpha')) {
-          prefix = `${String.fromCharCode(97 + index)}. `; // lower-alpha (a, b, c)
+          prefix = `${String.fromCharCode(97 + index)}. `;
         }
         li.prepend(document.createTextNode(prefix));
       });
     });
 
-    // Replace Tables (Advanced multi-line, alignment, and colspan support)
+    // Replace Tables (Advanced multi-line, alignment, and full boundary generation)
     container.querySelectorAll('table').forEach(table => {
       let rowsData: { lines: string[], colspan: number, align: string, colIndex: number }[][] = [];
       let colWidths: number[] = [];
 
-      // Pass 1: Parse cells, preserve line breaks, and get base column widths
       table.querySelectorAll('tr').forEach((tr) => {
         let rowCells: any[] = [];
         let colIndex = 0;
@@ -104,7 +96,6 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
           let colspan = parseInt(cell.getAttribute('colspan') || '1', 10);
           let align = (cell as HTMLElement).style.textAlign || 'left';
           
-          // Preserve line breaks from TipTap's block elements (<p> and <br>)
           let html = cell.innerHTML
             .replace(/<br\s*\/?>/gi, '\n')
             .replace(/<\/p>/gi, '\n')
@@ -116,16 +107,14 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
           dummy.innerHTML = html;
           let text = dummy.textContent || '';
           
-          // Split into lines and clean up trailing spaces
           let textLines = text.split('\n')
             .map(l => l.trim())
-            .filter((l, i, arr) => l !== '' || arr.length === 1); // keep empty string only if cell is totally empty
+            .filter((l, _i, arr) => l !== '' || arr.length === 1); 
             
           if (textLines.length === 0) textLines = [''];
 
           rowCells.push({ lines: textLines, colspan, align, colIndex });
 
-          // Update column widths (only for single-span cells first to establish a baseline)
           if (colspan === 1) {
             let maxLineLen = Math.max(...textLines.map(l => l.length));
             colWidths[colIndex] = Math.max(colWidths[colIndex] || 0, maxLineLen);
@@ -135,20 +124,15 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
         rowsData.push(rowCells);
       });
 
-      // Pass 2: Adjust column widths to safely fit colspan contents if they are wider than the merged columns
       rowsData.forEach(row => {
         row.forEach(cell => {
           if (cell.colspan > 1) {
             let maxLineLen = Math.max(...cell.lines.map((l: string) => l.length));
             let currentSpanWidth = 0;
-            // Add up the widths of all columns this cell spans
             for (let i = 0; i < cell.colspan; i++) {
               currentSpanWidth += (colWidths[cell.colIndex + i] || 0);
             }
-            // Add the width of the skipped internal dividers (" | " = 3 spaces)
             currentSpanWidth += (cell.colspan - 1) * 3; 
-            
-            // If the text is still wider than the combined columns, widen the last column
             if (maxLineLen > currentSpanWidth) {
               let extra = maxLineLen - currentSpanWidth;
               colWidths[cell.colIndex + cell.colspan - 1] = (colWidths[cell.colIndex + cell.colspan - 1] || 0) + extra;
@@ -159,25 +143,27 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
 
       let tableText = '\n';
       
-      // Pass 3: Draw the table row by row, line by line
+      // Pass 3: Draw the full table boundaries
+      
+      // Add very top border
+      let topDivider = '|';
+      colWidths.forEach(w => { topDivider += '-'.repeat(w + 2) + '|'; });
+      tableText += topDivider + '\n';
+
       rowsData.forEach((row, rowIndex) => {
-        // Find how many vertical text lines this table row requires
         let maxLines = Math.max(...row.map(c => c.lines.length));
         
         for (let lineIdx = 0; lineIdx < maxLines; lineIdx++) {
           let rowText = '| ';
           
           row.forEach(cell => {
-            let text = cell.lines[lineIdx] || ''; // If this cell has fewer lines, print blank space
-            
-            // Calculate exact character width this cell block is allowed to consume
+            let text = cell.lines[lineIdx] || '';
             let targetWidth = 0;
             for (let i = 0; i < cell.colspan; i++) {
               targetWidth += (colWidths[cell.colIndex + i] || 0);
             }
             targetWidth += (cell.colspan - 1) * 3;
 
-            // Apply Alignment Padding
             let paddedText = '';
             if (cell.align === 'center') {
               let leftPad = Math.floor((targetWidth - text.length) / 2);
@@ -186,29 +172,27 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
             } else if (cell.align === 'right') {
               paddedText = text.padStart(targetWidth, ' ');
             } else {
-              paddedText = text.padEnd(targetWidth, ' '); // Default Left Align
+              paddedText = text.padEnd(targetWidth, ' '); 
             }
-
             rowText += paddedText + ' | ';
           });
-          
           tableText += rowText.trimEnd() + '\n';
         }
         
-        // Add divider exactly matching the column sizes under the header row
-        if (rowIndex === 0 && table.querySelector('th')) {
-          let dividerRow = '|';
-          colWidths.forEach(w => {
-            dividerRow += '-'.repeat(w + 2) + '|';
-          });
-          tableText += dividerRow + '\n';
-        }
+        // NEW: Draw a dividing line under EVERY row.
+        // Use '=====' if this is the header row, otherwise use '-----'
+        let isHeader = rowIndex === 0 && table.querySelector('th');
+        let char = isHeader ? '=' : '-';
+        let dividerRow = '|';
+        colWidths.forEach(w => {
+          dividerRow += char.repeat(w + 2) + '|';
+        });
+        tableText += dividerRow + '\n';
       });
 
       table.parentNode?.replaceChild(document.createTextNode(tableText), table);
     });
 
-    // Add spacing to blocks
     container.querySelectorAll('p, h1, h2, h3').forEach(block => {
       block.appendChild(document.createTextNode('\n\n'));
     });
@@ -217,25 +201,17 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
   };
 
   const handleFinalExport = async () => {
-    if (!destinationPath) {
-      alert("Please select a destination folder first!");
-      return;
-    }
+    if (!destinationPath) { alert("Please select a destination folder first!"); return; }
 
     setIsExporting(true);
     const exportList: any[] = [];
     
-    // Gather Data
     const walk = (winId: string, depth: number, parentTitle: string = "Root") => {
       const win = windows[winId];
       if (!win) return;
-
       win.tabs.forEach(tab => {
         if (selectedTabIds.has(tab.id)) {
-          exportList.push({
-            id: tab.id, title: tab.title, content: tab.content,
-            depth, fromParent: parentTitle, createdAt: tab.createdAt
-          });
+          exportList.push({ id: tab.id, title: tab.title, content: tab.content, depth, fromParent: parentTitle, createdAt: tab.createdAt });
           if (windows[tab.id]) walk(tab.id, depth + 1, tab.title);
         }
       });
@@ -249,7 +225,6 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
         const jsonData = JSON.stringify(exportList, null, 2);
         await writeFile(fullPath, new TextEncoder().encode(jsonData));
       } 
-      
       else if (exportFormat === 'txt') {
         let formattedText = `Destination: ${destinationPath}\nFile Name: ${exportFileName}.txt\n\n`;
         formattedText += exportList.map(item => {
@@ -259,14 +234,11 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
         
         await writeFile(fullPath, new TextEncoder().encode(formattedText));
       }
-      
       else if (exportFormat === 'pdf') {
-        // Build a temporary HTML wrapper for the PDF engine
         const container = document.createElement('div');
         container.style.padding = '20px';
         container.style.fontFamily = 'Arial, sans-serif';
 
-        // NEW: Inject CSS so tables are drawn correctly in the PDF
         const style = document.createElement('style');
         style.innerHTML = `
           table { border-collapse: collapse; width: 100%; margin: 15px 0; }
@@ -293,20 +265,10 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
           container.appendChild(section);
         });
 
-        // Configure PDF Generation
-        const opt = {
-          margin: 0.5,
-          filename: `${exportFileName}.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2 },
-          jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-        };
-
-        // Generate ArrayBuffer and save via Tauri
+        const opt = { margin: 0.5, filename: `${exportFileName}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } };
         const pdfBytes = await html2pdf().set(opt as any).from(container).output('arraybuffer');
         await writeFile(fullPath, new Uint8Array(pdfBytes));
       }
-
       alert(`Successfully saved to:\n${fullPath}`);
       onClose();
     } catch (error) {
@@ -339,8 +301,6 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="export-modal large" onClick={e => e.stopPropagation()}>
         <h3 style={{color: 'var(--accent-color)', margin: '0 0 15px 0'}}>Export Configuration</h3>
-        
-        {/* DESTINATION FOLDER (NEW) */}
         <div className="modal-field">
           <label>Destination Folder</label>
           <div style={{display: 'flex', gap: '10px'}}>
@@ -348,17 +308,14 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
             <button className="confirm-btn" style={{padding: '10px'}} onClick={handleSelectFolder}>Browse</button>
           </div>
         </div>
-
         <div className="modal-field">
           <label>File Name</label>
           <input value={exportFileName} onChange={e => setExportFileName(e.target.value)} />
         </div>
-        
         <div className="modal-field tree-selector">
           <label>Select Content to Export</label>
           <div className="tree-container"><ExportTreeNode winId="root" depth={0} /></div>
         </div>
-        
         <div className="modal-field">
           <label>Format</label>
           <div className="button-row">
@@ -367,12 +324,9 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
             <button className={exportFormat === 'pdf' ? 'active' : ''} onClick={() => setExportFormat('pdf')}>PDF Report</button>
           </div>
         </div>
-        
         <div className="modal-actions">
           <button className="cancel-btn" onClick={onClose} disabled={isExporting}>Cancel</button>
-          <button className="confirm-btn" onClick={handleFinalExport} disabled={isExporting}>
-            {isExporting ? 'Generating...' : `Save ${selectedTabIds.size} Items`}
-          </button>
+          <button className="confirm-btn" onClick={handleFinalExport} disabled={isExporting}>{isExporting ? 'Generating...' : `Save ${selectedTabIds.size} Items`}</button>
         </div>
       </div>
     </div>
