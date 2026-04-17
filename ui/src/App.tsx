@@ -30,6 +30,7 @@ import { Highlight } from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
 import { invoke } from '@tauri-apps/api/core';
 import { Eye } from 'lucide-react';
+import { ask } from '@tauri-apps/plugin-dialog';
 
 
 const CustomEditorShortcuts = Extension.create({
@@ -469,10 +470,17 @@ export default function App() {
           e.preventDefault();
           const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === activeTabId));
           if (winId) {
-            // Evaluates before any logic triggers
-            if (window.confirm("Delete this item and all sub-items?")) {
-              deleteTab(winId, activeTabId);
-            }
+            const targetTabId = activeTabId; // Capture ID safely before async call
+            
+            // Native Tauri Dialog (Asynchronous)
+            ask("Delete this item and all sub-items?", { 
+              title: 'Confirm Deletion', 
+              kind: 'warning' 
+            }).then((confirmed) => {
+              if (confirmed) {
+                deleteTab(winId, targetTabId);
+              }
+            });
           }
           return;
         }
