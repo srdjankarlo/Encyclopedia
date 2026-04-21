@@ -471,9 +471,12 @@ export default function App() {
           const winId = Object.keys(windows).find(id => windows[id].tabs.some(t => t.id === activeTabId));
           if (winId) {
             const targetTabId = activeTabId; // Capture ID safely before async call
+            // Find the tab object to get its title, fallback to 'this item' just in case
+            const currentTab = windows[winId].tabs.find(t => t.id === targetTabId);
+            const targetTabName = currentTab ? currentTab.title : 'this item';
             
             // Native Tauri Dialog (Asynchronous)
-            ask("Delete this item and all sub-items?", { 
+            ask(`Delete this item ${targetTabName} and all sub-items?`, { 
               title: 'Confirm Deletion', 
               kind: 'warning' 
             }).then((confirmed) => {
