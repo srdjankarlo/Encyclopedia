@@ -105,52 +105,71 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
         <div className="tool-separator" style={{ height: '32px', margin: '10px 0' }} />
 
         <Section title="Tables">
-          <button onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()} title="Insert Table"><TableIcon size={18} /></button>
-          {editor.isActive('table') && (
-            <>
-              {/* Horizontal Alignment */}
-              <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={editor.isActive({ textAlign: 'left' }) ? 'is-active' : ''} title="Align Left"><AlignLeft size={18} /></button>
-              <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={editor.isActive({ textAlign: 'center' }) ? 'is-active' : ''} title="Align Center"><AlignCenter size={18} /></button>
-              <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={editor.isActive({ textAlign: 'right' }) ? 'is-active' : ''} title="Align Right"><AlignRight size={18} /></button>
+          {/* Main Outer Row */}
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            
+            {/* 1. Table icon on its own */}
+            <button onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()} title="Insert Table">
+              <TableIcon size={18} />
+            </button>
 
-              {/* Vertical Alignment */}
-              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'top').run()} className={editor.isActive('tableCell', { verticalAlign: 'top' }) ? 'is-active' : ''} title="Align Top"><ArrowUpToLine size={18} /></button>
-              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'middle').run()} className={editor.isActive('tableCell', { verticalAlign: 'middle' }) ? 'is-active' : ''} title="Align Middle"><FoldVertical size={18} /></button>
-              <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'bottom').run()} className={editor.isActive('tableCell', { verticalAlign: 'bottom' }) ? 'is-active' : ''} title="Align Bottom"><ArrowDownToLine size={18} /></button>
+            {editor.isActive('table') && (
+              <>
+                {/* 2. Alignment Block (Horizontal on top, Vertical below) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={editor.isActive({ textAlign: 'left' }) ? 'is-active' : ''} title="Align Left"><AlignLeft size={18} /></button>
+                    <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={editor.isActive({ textAlign: 'center' }) ? 'is-active' : ''} title="Align Center"><AlignCenter size={18} /></button>
+                    <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={editor.isActive({ textAlign: 'right' }) ? 'is-active' : ''} title="Align Right"><AlignRight size={18} /></button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'top').run()} className={editor.isActive('tableCell', { verticalAlign: 'top' }) ? 'is-active' : ''} title="Align Top"><ArrowUpToLine size={18} /></button>
+                    <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'middle').run()} className={editor.isActive('tableCell', { verticalAlign: 'middle' }) ? 'is-active' : ''} title="Align Middle"><FoldVertical size={18} /></button>
+                    <button onClick={() => editor.chain().focus().setCellAttribute('verticalAlign', 'bottom').run()} className={editor.isActive('tableCell', { verticalAlign: 'bottom' }) ? 'is-active' : ''} title="Align Bottom"><ArrowDownToLine size={18} /></button>
+                  </div>
+                </div>
 
-              {/* Cell Background Color */}
-              <label className="color-picker-btn" title="Cell Color">
-                <Palette size={18} />
-                <input type="color" onChange={(e) => editor.chain().focus().setCellAttribute('backgroundColor', e.target.value).run()} style={{ opacity: 0, position: 'absolute', width: '0' }} />
-              </label>
+                {/* 3. Cell color on its own */}
+                <label className="color-picker-btn" title="Cell Color" style={{ display: 'flex', alignItems: 'center' }}>
+                  <Palette size={18} />
+                  <input type="color" onChange={(e) => editor.chain().focus().setCellAttribute('backgroundColor', e.target.value).run()} style={{ opacity: 0, position: 'absolute', width: '0' }} />
+                </label>
 
-              {/* Modify Table Matrix */}
-              <button onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Before">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="6" height="16" fill="currentColor" /><rect x="3" y="4" width="18" height="16" /><line x1="15" y1="4" x2="15" y2="20" /></svg>
-              </button>
-              <button onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column After">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="15" y="4" width="6" height="16" fill="currentColor" /><rect x="3" y="4" width="18" height="16" /><line x1="9" y1="4" x2="9" y2="20" /></svg>
-              </button>
-              <button onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Column" style={{color: '#ff4d4d'}}><MinusSquare size={18} /></button>
-              
-              <button onClick={() => editor.chain().focus().addRowBefore().run()} title="Add Row Before">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="3" width="16" height="6" fill="currentColor" /><rect x="4" y="3" width="16" height="18" /><line x1="4" y1="15" x2="20" y2="15" /></svg>
-              </button>
-              <button onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row After">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="15" width="16" height="6" fill="currentColor" /><rect x="4" y="3" width="16" height="18" /><line x1="4" y1="9" x2="20" y2="9" /></svg>
-              </button>
-              <button onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row" style={{color: '#ff4d4d'}}><MinusSquare size={18} /></button>
+                {/* 4. Matrix Block (Columns on top, Rows below) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Before">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="6" height="16" fill="currentColor" /><rect x="3" y="4" width="18" height="16" /><line x1="15" y1="4" x2="15" y2="20" /></svg>
+                    </button>
+                    <button onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column After">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="15" y="4" width="6" height="16" fill="currentColor" /><rect x="3" y="4" width="18" height="16" /><line x1="9" y1="4" x2="9" y2="20" /></svg>
+                    </button>
+                    <button onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Column" style={{color: '#ff4d4d'}}><MinusSquare size={18} /></button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button onClick={() => editor.chain().focus().addRowBefore().run()} title="Add Row Before">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="3" width="16" height="6" fill="currentColor" /><rect x="4" y="3" width="16" height="18" /><line x1="4" y1="15" x2="20" y2="15" /></svg>
+                    </button>
+                    <button onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row After">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="15" width="16" height="6" fill="currentColor" /><rect x="4" y="3" width="16" height="18" /><line x1="4" y1="9" x2="20" y2="9" /></svg>
+                    </button>
+                    <button onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row" style={{color: '#ff4d4d'}}><MinusSquare size={18} /></button>
+                  </div>
+                </div>
 
-              <button onClick={() => editor.chain().focus().mergeCells().run()} disabled={!editor.can().mergeCells()} title="Merge Selected Cells">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="12" x2="21" y2="12" strokeDasharray="4 4" opacity="0.5" /></svg>
-              </button>
-              <button onClick={() => editor.chain().focus().splitCell().run()} disabled={!editor.can().splitCell()} title="Split Cell">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="12" y1="3" x2="12" y2="21" /></svg>
-              </button>
-              
-              <button onClick={() => editor.chain().focus().deleteTable().run()} style={{color: '#ff4d4d'}} title="Delete Table"><Trash2 size={18} /></button>
-            </>
-          )}
+                {/* 5. Merge, split, delete in one straight row at the end */}
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <button onClick={() => editor.chain().focus().mergeCells().run()} disabled={!editor.can().mergeCells()} title="Merge Selected Cells">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="12" x2="21" y2="12" strokeDasharray="4 4" opacity="0.5" /></svg>
+                  </button>
+                  <button onClick={() => editor.chain().focus().splitCell().run()} disabled={!editor.can().splitCell()} title="Split Cell">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="12" y1="3" x2="12" y2="21" /></svg>
+                  </button>
+                  <button onClick={() => editor.chain().focus().deleteTable().run()} style={{color: '#ff4d4d'}} title="Delete Table"><Trash2 size={18} /></button>
+                </div>
+              </>
+            )}
+          </div>
         </Section>
         
         {/* Link Search Modal overlay */}
