@@ -20,16 +20,26 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
-    setSelectedTabIds(new Set(Object.values(windows).flatMap(w => w.tabs.map(t => t.id))));
+    setSelectedTabIds(new Set()); 
   }, [windows]);
+
+  const allTabIds = Object.values(windows).flatMap(w => w.tabs.map(t => t.id));
+
+  const handleSelectAll = () => {
+    if (selectedTabIds.size === allTabIds.length && allTabIds.length > 0) {
+      setSelectedTabIds(new Set());
+    } else {
+      setSelectedTabIds(new Set(allTabIds));
+    }
+  };
 
   const toggleTabSelection = (tab: Tab, selected: boolean) => {
     const next = new Set(selectedTabIds);
-    const walk = (tId: string) => {
-      selected ? next.add(tId) : next.delete(tId);
-      if (windows[tId]) windows[tId].tabs.forEach(child => walk(child.id));
-    };
-    walk(tab.id);
+    if (selected) {
+      next.add(tab.id);
+    } else {
+      next.delete(tab.id);
+    }
     setSelectedTabIds(next);
   };
 
@@ -83,7 +93,6 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
       });
     });
 
-    // Replace Tables (Advanced multi-line, alignment, and full boundary generation)
     container.querySelectorAll('table').forEach(table => {
       let rowsData: { lines: string[], colspan: number, align: string, colIndex: number }[][] = [];
       let colWidths: number[] = [];
@@ -143,9 +152,6 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
 
       let tableText = '\n';
       
-      // Pass 3: Draw the full table boundaries
-      
-      // Add very top border
       let topDivider = '|';
       colWidths.forEach(w => { topDivider += '-'.repeat(w + 2) + '|'; });
       tableText += topDivider + '\n';
@@ -179,8 +185,6 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
           tableText += rowText.trimEnd() + '\n';
         }
         
-        // NEW: Draw a dividing line under EVERY row.
-        // Use '=====' if this is the header row, otherwise use '-----'
         let isHeader = rowIndex === 0 && table.querySelector('th');
         let char = isHeader ? '=' : '-';
         let dividerRow = '|';
@@ -212,8 +216,8 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
       win.tabs.forEach(tab => {
         if (selectedTabIds.has(tab.id)) {
           exportList.push({ id: tab.id, title: tab.title, content: tab.content, depth, fromParent: parentTitle, createdAt: tab.createdAt });
-          if (windows[tab.id]) walk(tab.id, depth + 1, tab.title);
         }
+        if (windows[tab.id]) walk(tab.id, depth + 1, tab.title);
       });
     };
     walk('root', 0);
@@ -286,9 +290,17 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
       <div style={{ marginLeft: depth * 15 }}>
         {win.tabs.map(tab => (
           <div key={tab.id}>
-            <label className="modal-checkbox-row">
-              <input type="checkbox" checked={selectedTabIds.has(tab.id)} onChange={(e) => toggleTabSelection(tab, e.target.checked)} />
-              <span className="modal-tab-name">{tab.title}</span>
+            {/* UPDATED: Flex container with space-between swaps text and checkbox positions */}
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', cursor: 'pointer' }}>
+              <span style={{ fontSize: '13px', color: 'var(--text-main)', lineHeight: 'normal', paddingRight: '10px' }}>
+                {tab.title}
+              </span>
+              <input 
+                type="checkbox" 
+                checked={selectedTabIds.has(tab.id)} 
+                onChange={(e) => toggleTabSelection(tab, e.target.checked)} 
+                style={{ margin: 0, cursor: 'pointer', flexShrink: 0 }} 
+              />
             </label>
             {windows[tab.id] && <ExportTreeNode winId={tab.id} depth={depth + 1} />}
           </div>
@@ -301,6 +313,7 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="export-modal large" onClick={e => e.stopPropagation()}>
         <h3 style={{color: 'var(--accent-color)', margin: '0 0 15px 0'}}>Export Configuration</h3>
+        
         <div className="modal-field">
           <label>Destination Folder</label>
           <div style={{display: 'flex', gap: '10px'}}>
@@ -308,14 +321,22 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
             <button className="confirm-btn" style={{padding: '10px'}} onClick={handleSelectFolder}>Browse</button>
           </div>
         </div>
+        
         <div className="modal-field">
           <label>File Name</label>
           <input value={exportFileName} onChange={e => setExportFileName(e.target.value)} />
         </div>
+        
         <div className="modal-field tree-selector">
-          <label>Select Content to Export</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <label style={{ marginBottom: 0 }}>Select Content to Export</label>
+            <button className="cancel-btn" style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold' }} onClick={handleSelectAll}>
+              {selectedTabIds.size === allTabIds.length && allTabIds.length > 0 ? 'Unselect All' : 'Select All'}
+            </button>
+          </div>
           <div className="tree-container"><ExportTreeNode winId="root" depth={0} /></div>
         </div>
+        
         <div className="modal-field">
           <label>Format</label>
           <div className="button-row">
@@ -324,9 +345,12 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
             <button className={exportFormat === 'pdf' ? 'active' : ''} onClick={() => setExportFormat('pdf')}>PDF Report</button>
           </div>
         </div>
+        
         <div className="modal-actions">
           <button className="cancel-btn" onClick={onClose} disabled={isExporting}>Cancel</button>
-          <button className="confirm-btn" onClick={handleFinalExport} disabled={isExporting}>{isExporting ? 'Generating...' : `Save ${selectedTabIds.size} Items`}</button>
+          <button className="confirm-btn" onClick={handleFinalExport} disabled={isExporting}>
+            {isExporting ? 'Generating...' : `Save ${selectedTabIds.size} Items`}
+          </button>
         </div>
       </div>
     </div>
