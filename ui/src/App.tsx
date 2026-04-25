@@ -126,6 +126,7 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   
   const [listViewWidth, setListViewWidth] = useState(350);
+  const [prevListViewWidth, setPrevListViewWidth] = useState(350);
   const [expandedListNodes, setExpandedListNodes] = useState<Set<string>>(new Set());
   
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
@@ -659,6 +660,18 @@ export default function App() {
 
   const { stats, cursor } = getEditorStats();
 
+  const handleSidebarDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (listViewWidth <= 20) {
+      // If it's minimized, restore it
+      setListViewWidth(prevListViewWidth > 20 ? prevListViewWidth : 350);
+    } else {
+      // If it's open, save current width and minimize to 5px
+      setPrevListViewWidth(listViewWidth);
+      setListViewWidth(5);
+    }
+  };
+
   return (
     <div className={`app-wrapper ${isDarkMode ? 'dark-theme' : ''}`}>
       <div className="global-menubar">
@@ -733,7 +746,19 @@ export default function App() {
 
       <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}>
         <div className="miller-columns">
-          <ResizableBox width={listViewWidth} height={Infinity} axis="x" onResize={(_e, { size }) => setListViewWidth(size.width)} minConstraints={[250, Infinity]} maxConstraints={[600, Infinity]} handle={<div className="drag-handle" />} >
+          <ResizableBox 
+            width={listViewWidth} 
+            height={Infinity} 
+            axis="x" 
+            onResize={(_e, { size }) => setListViewWidth(size.width)}
+            onResizeStart={() => {
+              // Remember the width if the user manually drags it
+              if (listViewWidth > 20) setPrevListViewWidth(listViewWidth);
+            }}
+            minConstraints={[5, Infinity]} /* Changed from 250 to 5 so it can minimize */
+            maxConstraints={[600, Infinity]} 
+            handle={<div className="drag-handle" onDoubleClick={handleSidebarDoubleClick} />} 
+          >
             <div className="column" style={{ width: '100%' }}>
               <div className="column-header" style={{ borderBottom: 'none' }}><span className="header-title">LIBRARY</span></div>
               <div className="tab-list tree-view">
