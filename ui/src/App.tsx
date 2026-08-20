@@ -403,10 +403,6 @@ export default function App() {
     return () => { editor.off('selectionUpdate', updateHandler); editor.off('transaction', updateHandler); };
   }, [editor]);
 
-  // useEffect(() => {
-  //   document.body.classList.toggle('dark-theme', isDarkMode);
-  //   localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-  // }, [isDarkMode]);
   useEffect(() => {
     document.body.classList.remove('dark-theme', 'gray-theme');
     if (theme !== 'light') document.body.classList.add(`${theme}-theme`);
@@ -682,7 +678,6 @@ export default function App() {
   };
 
   return (
-    // <div className={`app-wrapper ${isDarkMode ? 'dark-theme' : ''}`}>
     <div className={`app-wrapper ${theme !== 'light' ? `${theme}-theme` : ''}`}>
       <div className="global-menubar">
         <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
@@ -711,7 +706,6 @@ export default function App() {
           <button onMouseEnter={() => setActiveMenu('view')} onClick={() => setActiveMenu(activeMenu === 'view' ? null : 'view')}>View</button>
           {activeMenu === 'view' && (
             <div className="dropdown">
-              {/* <button onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</button> */}
               <button className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')}>Light Theme</button>
               <button className={theme === 'gray' ? 'active' : ''} onClick={() => setTheme('gray')}>Gray Theme</button>
               <button className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')}>Dark Theme</button>
@@ -757,7 +751,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}> */}
       <div className={`app-container ${theme !== 'light' ? `${theme}-theme` : ''}`}>
         <div className="miller-columns">
           <ResizableBox 

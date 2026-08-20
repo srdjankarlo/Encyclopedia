@@ -18,6 +18,9 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
   const [destinationPath, setDestinationPath] = useState<string>('');
   const [exportFormat, setExportFormat] = useState<'txt' | 'json' | 'pdf'>('txt');
   const [isExporting, setIsExporting] = useState(false);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [autoSelectChildren, setAutoSelectChildren] = useState(false);
+  const [autoSelectParents, setAutoSelectParents] = useState(false);
 
   useEffect(() => {
     setSelectedTabIds(new Set()); 
@@ -33,13 +36,53 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
     }
   };
 
+  // Helper to find all nested children
+  const getAllChildren = (id: string, result = new Set<string>()) => {
+    const win = windows[id];
+    if (win) {
+      win.tabs.forEach(t => {
+        result.add(t.id);
+        getAllChildren(t.id, result);
+      });
+    }
+    return result;
+  };
+
+  // Helper to trace back to the root parent
+  const getAllParents = (id: string, result = new Set<string>()) => {
+    for (const [winId, win] of Object.entries(windows)) {
+      if (win.tabs.some(t => t.id === id)) {
+        if (winId !== 'root') {
+          result.add(winId);
+          getAllParents(winId, result);
+        }
+        break;
+      }
+    }
+    return result;
+  };
+
   const toggleTabSelection = (tab: Tab, selected: boolean) => {
     const next = new Set(selectedTabIds);
-    if (selected) {
-      next.add(tab.id);
-    } else {
-      next.delete(tab.id);
+    
+    const applySelection = (id: string, sel: boolean) => {
+      if (sel) next.add(id);
+      else next.delete(id);
+    };
+
+    // 1. Select the item itself
+    applySelection(tab.id, selected);
+
+    // 2. Select/unselect children if toggle is on
+    if (autoSelectChildren) {
+      getAllChildren(tab.id).forEach(childId => applySelection(childId, selected));
     }
+
+    // 3. Select/unselect parents if toggle is on
+    if (autoSelectParents) {
+      getAllParents(tab.id).forEach(parentId => applySelection(parentId, selected));
+    }
+
     setSelectedTabIds(next);
   };
 
@@ -288,23 +331,49 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
     if (!win || win.tabs.length === 0) return null;
     return (
       <div style={{ marginLeft: depth * 15 }}>
-        {win.tabs.map(tab => (
-          <div key={tab.id}>
-            {/* UPDATED: Flex container with space-between swaps text and checkbox positions */}
-            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', cursor: 'pointer' }}>
-              <span style={{ fontSize: '13px', color: 'var(--text-main)', lineHeight: 'normal', paddingRight: '10px' }}>
-                {tab.title}
-              </span>
-              <input 
-                type="checkbox" 
-                checked={selectedTabIds.has(tab.id)} 
-                onChange={(e) => toggleTabSelection(tab, e.target.checked)} 
-                style={{ margin: 0, cursor: 'pointer', flexShrink: 0 }} 
-              />
-            </label>
-            {windows[tab.id] && <ExportTreeNode winId={tab.id} depth={depth + 1} />}
-          </div>
-        ))}
+        {win.tabs.map(tab => {
+          const hasChildren = windows[tab.id] && windows[tab.id].tabs.length > 0;
+          const isExpanded = expandedNodes.has(tab.id);
+
+          return (
+            <div key={tab.id}>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', cursor: 'pointer' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-main)', lineHeight: 'normal', paddingRight: '10px', display: 'flex', alignItems: 'center' }}>
+                  <span 
+                    onClick={(e) => {
+                      if (!hasChildren) return;
+                      e.preventDefault();
+                      setExpandedNodes(prev => {
+                        const next = new Set(prev);
+                        if (next.has(tab.id)) next.delete(tab.id);
+                        else next.add(tab.id);
+                        return next;
+                      });
+                    }}
+                    style={{
+                      width: '20px',
+                      cursor: hasChildren ? 'pointer' : 'default',
+                      display: 'inline-block',
+                      textAlign: 'center',
+                      opacity: hasChildren ? 1 : 0.3
+                    }}
+                  >
+                    {hasChildren ? (isExpanded ? '▼' : '▶') : '•'}
+                  </span>
+                  {tab.title}
+                </span>
+                <input 
+                  type="checkbox" 
+                  checked={selectedTabIds.has(tab.id)} 
+                  onChange={(e) => toggleTabSelection(tab, e.target.checked)} 
+                  style={{ margin: 0, cursor: 'pointer', flexShrink: 0 }} 
+                />
+              </label>
+              {/* Only render children if this node is expanded */}
+              {hasChildren && isExpanded && <ExportTreeNode winId={tab.id} depth={depth + 1} />}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -328,9 +397,21 @@ export default function ExportModal({ windows, onClose }: ExportModalProps) {
         </div>
         
         <div className="modal-field tree-selector">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <label style={{ marginBottom: 0 }}>Select Content to Export</label>
-            <button className="cancel-btn" style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold' }} onClick={handleSelectAll}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ marginBottom: 0 }}>Select Content to Export</label>
+              <div style={{ display: 'flex', gap: '15px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', textTransform: 'none' }}>
+                  <input type="checkbox" checked={autoSelectChildren} onChange={e => setAutoSelectChildren(e.target.checked)} style={{width: 'auto'}} />
+                  Auto-Select Children
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', textTransform: 'none' }}>
+                  <input type="checkbox" checked={autoSelectParents} onChange={e => setAutoSelectParents(e.target.checked)} style={{width: 'auto'}} />
+                  Auto-Select Parents
+                </label>
+              </div>
+            </div>
+            <button className="cancel-btn" style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 'bold', marginTop: '2px' }} onClick={handleSelectAll}>
               {selectedTabIds.size === allTabIds.length && allTabIds.length > 0 ? 'Unselect All' : 'Select All'}
             </button>
           </div>
