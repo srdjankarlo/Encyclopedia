@@ -122,7 +122,8 @@ export default function App() {
   const [contentMatches, setContentMatches] = useState<{tabId: string, title: string}[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [globalSortMode, setGlobalSortMode] = useState<SortMode>('oldest');
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('theme') === 'dark');
+  // const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('theme') === 'dark');
+  const [theme, setTheme] = useState<string>(() => localStorage.getItem('theme') || 'light');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   
   const [listViewWidth, setListViewWidth] = useState(350);
@@ -399,10 +400,15 @@ export default function App() {
     return () => { editor.off('selectionUpdate', updateHandler); editor.off('transaction', updateHandler); };
   }, [editor]);
 
+  // useEffect(() => {
+  //   document.body.classList.toggle('dark-theme', isDarkMode);
+  //   localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+  // }, [isDarkMode]);
   useEffect(() => {
-    document.body.classList.toggle('dark-theme', isDarkMode);
-    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-  }, [isDarkMode]);
+    document.body.classList.remove('dark-theme', 'gray-theme');
+    if (theme !== 'light') document.body.classList.add(`${theme}-theme`);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const loadFromDb = async () => {
@@ -673,7 +679,8 @@ export default function App() {
   };
 
   return (
-    <div className={`app-wrapper ${isDarkMode ? 'dark-theme' : ''}`}>
+    // <div className={`app-wrapper ${isDarkMode ? 'dark-theme' : ''}`}>
+    <div className={`app-wrapper ${theme !== 'light' ? `${theme}-theme` : ''}`}>
       <div className="global-menubar">
         <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
           <button onMouseEnter={() => setActiveMenu('data')} onClick={() => setActiveMenu(activeMenu === 'data' ? null : 'data')}>Data</button>
@@ -701,7 +708,10 @@ export default function App() {
           <button onMouseEnter={() => setActiveMenu('view')} onClick={() => setActiveMenu(activeMenu === 'view' ? null : 'view')}>View</button>
           {activeMenu === 'view' && (
             <div className="dropdown">
-              <button onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</button>
+              {/* <button onClick={() => setIsDarkMode(!isDarkMode)}>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</button> */}
+              <button className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')}>Light Theme</button>
+              <button className={theme === 'gray' ? 'active' : ''} onClick={() => setTheme('gray')}>Gray Theme</button>
+              <button className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')}>Dark Theme</button>
               <button onClick={() => {
                 const allTabs = Object.values(windows).flatMap(w => w.tabs);
                 if (expandedListNodes.size > 0) setExpandedListNodes(new Set());
@@ -744,7 +754,8 @@ export default function App() {
         </div>
       </div>
 
-      <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}>
+      {/* <div className={`app-container ${isDarkMode ? 'dark-theme' : ''}`}> */}
+      <div className={`app-container ${theme !== 'light' ? `${theme}-theme` : ''}`}>
         <div className="miller-columns">
           <ResizableBox 
             width={listViewWidth} 
@@ -856,7 +867,7 @@ export default function App() {
                   <span><strong>Editor control shortcuts</strong></span>
                   <span><strong>CTRL+F:</strong> Find tabs/content</span>
                   <span><strong>CTRL+Scroll:</strong> Zoom In/Out Editor</span>
-                  <span><strong>ALT+SHIFT+Up/Down:</strong> Move text</span>
+                  <span><strong>SHIFT+ALT+Up/Down:</strong> Move text line</span>
                   <span><strong>CTRL+B:</strong> Bold text</span>
                   <span><strong>CTRL+I:</strong> Italic text</span>
                   <span><strong>CTRL+U:</strong> Underline text</span>

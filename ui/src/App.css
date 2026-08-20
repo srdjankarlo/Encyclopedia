@@ -4,29 +4,53 @@
 :root {
   /* Layout Colors */
   --bg-main: #ffffff;
-  --bg-sidebar: #f3f3f3;
-  --bg-header: #e8e8e8;
+  --bg-sidebar: #f2f2f2;
+  --bg-header: #f2f2f2;
   --bg-input: #ffffff;
   
   /* Text & Borders */
-  --text-main: #2c3e50;
-  --text-muted: #666666;
-  --border-color: #cccccc;
+  --text-main: #080808;
+  --text-muted: #8c8c8c;
+  --border-color: #d1d1d1;
   
   /* Interactive Elements */
-  --accent-color: #007acc;
-  --hover-color: #e8f2fa;
-  --danger-color: #ef4444;
-  --shadow: 0 5px 15px rgba(0,0,0,0.1);
+  --accent-color: #2675bf;
+  --hover-color: #e5ebf1;
+  --danger-color: #db5860;
+  --shadow: 0 4px 10px rgba(0,0,0,0.1);
   
   /* Buttons */
   --btn-bg: #ffffff;
   --btn-text: #000000;
-  --btn-border: #cccccc;
-  --btn-hover: #f0f0f0;
+  --btn-border: #c4c4c4;
+  --btn-hover: #dfdfdf;
   
   /* Scrollbars */
-  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb: #c8c8c8;
+  --scrollbar-track: transparent;
+}
+body.gray-theme {
+  /* Gray Theme (Neutral Developer Gray) */
+  --bg-main: #2b2b2b;       
+  --bg-sidebar: #3c3f41;
+  --bg-header: #3c3f41;
+  --bg-input: #45494a;
+  
+  --text-main: #a9b7c6;
+  --text-muted: #808080;
+  --border-color: #323232;
+  
+  --accent-color: #2f65ca;
+  --hover-color: #2d2f30;
+  --danger-color: #c75450;
+  --shadow: 0 4px 10px rgba(0,0,0,0.3);
+  
+  --btn-bg: #4c5052;
+  --btn-text: #bbbbbb;
+  --btn-border: #5e6265;
+  --btn-hover: #5c6164;
+  
+  --scrollbar-thumb: #595b5d;
   --scrollbar-track: transparent;
 }
 body.dark-theme {
@@ -853,4 +877,40 @@ body.dark-theme .tab-row.search-highlight .tree-indicator {
 /* Optional: Different color for search matches if it's NOT the active tab */
 .tab-eye-icon.search-eye:not(.active-eye) {
   color: #fbc02d; /* Matches your search highlight pulse */
+}
+/* IDE Typography and Sharp Corners */
+body {
+  font-family: 'Segoe UI', Inter, -apple-system, sans-serif;
+  font-size: 13px;
+}
+
+.search-bar input,
+.dropdown,
+.app-container,
+.miller-columns,
+.column,
+.export-modal,
+.wiki-link-search {
+  border-radius: 0 !important; /* IDEs prefer sharp, structural edges */
+}
+
+.tab-row {
+  padding: 6px 10px; /* Tighter vertical padding mimicking IDE file trees */
+  font-size: 13px;
+}
+
+button {
+  border-radius: 2px !important;
+}
+
+/* Specific Search Highlight Overrides for Gray Theme */
+body.gray-theme .tab-row.search-highlight {
+  background-color: rgba(255, 214, 0, 0.4);
+  border-color: #cba800;
+  animation: none;
+}
+
+body.gray-theme .tab-row.search-highlight .tab-title,
+body.gray-theme .tab-row.search-highlight .tree-indicator {
+  color: #000000 !important;
 }
