@@ -326,13 +326,16 @@ export default function App() {
   const getEditorStats = () => {
     if (!editor) return { stats: { chars: 0, words: 0, lines: 0 }, cursor: { char: 0, word: 0, line: 0 } };
     
-    const text = editor.getText();
+    // 1. Replaced editor.getText() with the exact same method used for the cursor, 
+    // but spanning the entire document size to represent the true "max"
+    const fullText = editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n');
     const stats = { 
-      chars: text.length, 
-      words: text.trim() ? text.trim().split(/\s+/).length : 0, 
-      lines: text.split(/\r\n|\r|\n/).length 
+      chars: fullText.length, 
+      words: fullText.trim() ? fullText.trim().split(/\s+/).length : 0, 
+      lines: fullText.split('\n').length 
     };
 
+    // 2. The cursor logic remains exactly the same
     const { from } = editor.state.selection;
     const textBefore = editor.state.doc.textBetween(0, from, '\n');
     const cursor = {
