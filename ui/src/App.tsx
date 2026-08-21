@@ -114,6 +114,10 @@ export default function App() {
   
   // NEW: Zoom state for CTRL + Scroll
   const [zoomLevel, setZoomLevel] = useState(100);
+  // NEW: Search and Replace state
+  const [showReplace, setShowReplace] = useState(false);
+  const [replaceQuery, setReplaceQuery] = useState("");
+  const [replaceWith, setReplaceWith] = useState("");
 
   const [globalSearch, setGlobalSearch] = useState("");
   const [globalMatches, setGlobalMatches] = useState<Tab[]>([]);
@@ -466,6 +470,20 @@ export default function App() {
         }
       }
 
+      // NEW: Search and Replace (CTRL+R)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') {
+        e.preventDefault(); // This stops the app from refreshing!
+        if (isInsideEditor && editor) {
+          const { from, to } = editor.state.selection;
+          // If text is highlighted, auto-fill the search box
+          if (from !== to) {
+            setReplaceQuery(editor.state.doc.textBetween(from, to, ' '));
+          }
+          setShowReplace(prev => !prev);
+        }
+        return;
+      }
+
       if (editingTabId || (isInput && !isInsideEditor)) return;
 
       if (activeTabId && !isInsideEditor) {
@@ -677,6 +695,40 @@ export default function App() {
     }
   };
 
+  const handleReplaceAll = () => {
+    if (!editor || !replaceQuery) return;
+    const { doc, tr } = editor.state;
+    const textNodes: {pos: number, text: string}[] = [];
+    
+    // 1. Map all text nodes
+    doc.descendants((node, pos) => {
+      if (node.isText && node.text) textNodes.push({ pos, text: node.text });
+    });
+
+    let modified = false;
+    // 2. Process from bottom to top so position changes don't affect previous nodes
+    for (let i = textNodes.length - 1; i >= 0; i--) {
+      const { pos, text } = textNodes[i];
+      // Escape special characters and search case-insensitively
+      const regex = new RegExp(replaceQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      let match;
+      const matches = [];
+      
+      while ((match = regex.exec(text)) !== null) {
+        matches.push({ start: pos + match.index, end: pos + match.index + match[0].length });
+      }
+      
+      // Replace within the node in reverse order
+      for (let j = matches.length - 1; j >= 0; j--) {
+        tr.insertText(replaceWith, matches[j].start, matches[j].end);
+        modified = true;
+      }
+    }
+    
+    if (modified) editor.view.dispatch(tr);
+    setShowReplace(false);
+  };
+
   return (
     <div className={`app-wrapper ${theme !== 'light' ? `${theme}-theme` : ''}`}>
       <div className="global-menubar">
@@ -825,6 +877,31 @@ export default function App() {
                 <EditorToolbar editor={editor} windows={windows} saveStatus={saveStatus} lastSaved={lastSaved} handleManualRetry={() => setWindows(p => ({...p}))} />
                 {/* NEW: Apply the zoom level directly to the editor content */}
                 <EditorContent editor={editor} className="rich-editor" style={{ zoom: `${zoomLevel}%` }} />
+                <EditorContent editor={editor} className="rich-editor" style={{ zoom: `${zoomLevel}%` }} />
+                
+                {/* NEW: Search and Replace Floating UI */}
+                {showReplace && (
+                  <div className="replace-overlay" style={{
+                    position: 'absolute', top: '60px', right: '20px', 
+                    backgroundColor: 'var(--bg-main, #ffffff)', border: '1px solid var(--border-color, #ccc)',
+                    padding: '10px', borderRadius: '6px', display: 'flex', gap: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 100, alignItems: 'center'
+                  }}>
+                    <input 
+                      autoFocus placeholder="Find..." value={replaceQuery} 
+                      onChange={e => setReplaceQuery(e.target.value)}
+                      style={{ padding: '4px 8px', width: '120px' }}
+                    />
+                    <input 
+                      placeholder="Replace with..." value={replaceWith} 
+                      onChange={e => setReplaceWith(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleReplaceAll()}
+                      style={{ padding: '4px 8px', width: '120px' }}
+                    />
+                    <button onClick={handleReplaceAll} style={{ padding: '4px 8px', cursor: 'pointer' }}>Replace All</button>
+                    <button onClick={() => setShowReplace(false)} style={{ padding: '4px 8px', cursor: 'pointer', color: '#ff4d4d' }}>✕</button>
+                  </div>
+                )}
                 
                 {/* NEW: Updated Footer with Cursor Stats */}
                 <div className="editor-footer">
