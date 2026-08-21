@@ -12,6 +12,7 @@
   --text-main: #080808;
   --text-muted: #8c8c8c;
   --border-color: #d1d1d1;
+  --table-border-color: var(--border-color); /* Fallback for Light theme */
   
   /* Interactive Elements */
   --accent-color: #2675bf;
@@ -39,6 +40,7 @@ body.gray-theme {
   --text-main: #a9b7c6;
   --text-muted: #808080;
   --border-color: #323232;
+  --table-border-color: #6a6a6a; /* High contrast specifically for tables */
   
   --accent-color: #2f65ca;
   --hover-color: #2d2f30;
@@ -62,6 +64,7 @@ body.dark-theme {
   --text-main: #d4d4d4;
   --text-muted: #888888;
   --border-color: #3c3c3c;
+  --table-border-color: #555555; /* Optional: Slightly boost contrast in dark mode too */
   
   --accent-color: #3794ff;
   --hover-color: #2a2d2e;
@@ -336,7 +339,7 @@ ul[data-type="taskList"] li > div p {
 .tool-separator { width: 1px; height: 20px; background: var(--border-color); margin: 0 8px; }
 .tool-group { display: flex; gap: 4px; }
 .rich-editor { flex-grow: 1; padding: 40px 60px; overflow-y: auto; background-color: var(--bg-main); }
-.rich-editor table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: 0; overflow: hidden; border: 1px solid var(--border-color); }
+.rich-editor table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: 0; overflow: hidden; border: 1px solid var(--table-border-color); }
 /* Container for the table within the editor */
 .ProseMirror table {
   border-collapse: collapse;
@@ -349,7 +352,7 @@ ul[data-type="taskList"] li > div p {
 .ProseMirror td, 
 .ProseMirror th {
   min-width: 1em;
-  border: 2px solid var(--border-color); /* Match your theme colors */
+  border: 2px solid var(--table-border-color); /* Match your theme colors */
   padding: 3px 5px;
   vertical-align: top;
   box-sizing: border-box;
@@ -405,8 +408,8 @@ ul[data-type="taskList"] li > div p {
   cursor: nwse-resize;
   z-index: 10;
 }
-.rich-editor td, .rich-editor th { min-width: 1em; border: 1px solid var(--border-color); padding: 3px 5px; vertical-align: top; box-sizing: border-box; }
-.rich-editor th { font-weight: bold; text-align: left; background-color: var(--bg-sidebar); }
+.rich-editor td, .rich-editor th { min-width: 1em; border: 1px solid var(--table-border-color); padding: 3px 5px; vertical-align: top; box-sizing: border-box; }
+.rich-editor th { font-weight: bold; text-align: left; background-color: var(--bg-sidebar); border: 1px solid var(--table-border-color);}
 .rich-editor img { max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 10px 0; }
 .ProseMirror { 
   line-height: 1.6; font-size: 16px; outline: none;
