@@ -39,6 +39,7 @@ const CustomEditorShortcuts = Extension.create({
   addKeyboardShortcuts() {
     return {
       'Tab': () => this.editor.commands.insertContent('\u00A0\u00A0\u00A0\u00A0'),
+      
       'Shift-Alt-ArrowUp': () => {
         const { state, dispatch } = this.editor.view;
         const { selection, tr } = state;
@@ -484,6 +485,39 @@ export default function App() {
         return;
       }
 
+      // NEW: Toggle Checkbox List (CTRL+SPACE)
+      if ((e.ctrlKey || e.metaKey) && e.key === ' ') {
+        if (isInsideEditor && editor) {
+          e.preventDefault();
+          editor.commands.toggleTaskList();
+        }
+        return;
+      }
+
+      // NEW: Check/Uncheck Item (CTRL+1)
+      if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+        if (isInsideEditor && editor) {
+          e.preventDefault();
+          const { state, dispatch } = editor.view;
+          const { $from } = state.selection;
+
+          // Traverse up the document tree to find the checkbox item
+          for (let depth = $from.depth; depth > 0; depth--) {
+            const node = $from.node(depth);
+            if (node.type.name === 'taskItem') {
+              // Flip the checked attribute
+              const tr = state.tr.setNodeMarkup($from.before(depth), null, {
+                ...node.attrs,
+                checked: !node.attrs.checked,
+              });
+              dispatch(tr);
+              break;
+            }
+          }
+        }
+        return;
+      }
+
       if (editingTabId || (isInput && !isInsideEditor)) return;
 
       if (activeTabId && !isInsideEditor) {
@@ -564,8 +598,8 @@ export default function App() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [activeTabId, isEditorOpen, windows, editingTabId, editor, globalSearch, globalSortMode, expandedListNodes]);
 
   useEffect(() => {
@@ -594,8 +628,13 @@ export default function App() {
   }, [windows, activeTabId, editor?.getHTML()]);
 
   useEffect(() => {
-    if (editor) editor.commands.setSearchTerm(contentSearch);
-  }, [contentSearch, activeTabId, editor]);
+    if (editor) {
+      // If the replace overlay is open, highlight what we are about to replace.
+      // Otherwise, default back to the sidebar's content search.
+      const termToHighlight = showReplace && replaceQuery ? replaceQuery : contentSearch;
+      editor.commands.setSearchTerm(termToHighlight);
+    }
+  }, [contentSearch, replaceQuery, showReplace, activeTabId, editor]);
 
   const expandToTab = (tabId: string) => {
     const path: string[] = [];
@@ -891,6 +930,12 @@ export default function App() {
                       autoFocus placeholder="Find..." value={replaceQuery} 
                       onChange={e => setReplaceQuery(e.target.value)}
                       style={{ padding: '4px 8px', width: '120px' }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setShowReplace(false);
+                          if (editor) editor.commands.focus();
+                        }
+                      }}
                     />
                     <input 
                       placeholder="Replace with..." value={replaceWith} 
