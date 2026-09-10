@@ -3,7 +3,7 @@
 
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite, Row};
 use serde::{Deserialize, Serialize};
-use tauri::{State, Manager};
+use tauri::{State};
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Tab {
