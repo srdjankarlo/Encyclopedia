@@ -1,7 +1,6 @@
 // src/App.tsx
 import { useState, useEffect, useRef } from 'react';
-import { ResizableBox } from 'react-resizable';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Heading } from '@tiptap/extension-heading';
 import { BulletList } from '@tiptap/extension-bullet-list';
@@ -15,7 +14,6 @@ import { Link } from '@tiptap/extension-link';
 import type { Tab, WindowData, SortMode, SaveStatus } from './types';
 import { WikiLink } from './extensions/WikiLink';
 import ExportModal from './components/ExportModal';
-import EditorToolbar from './components/EditorToolbar';
 import './App.css';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -29,8 +27,11 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { Highlight } from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
 import { invoke } from '@tauri-apps/api/core';
-import { Eye } from 'lucide-react';
 import { ask } from '@tauri-apps/plugin-dialog';
+import ShortcutsModal from './components/ShortcutsModal';
+import MenuBar from './components/MenuBar';
+import Sidebar from './components/Sidebar';
+import WritingSpace from './components/WritingSpace';
 
 
 const CustomEditorShortcuts = Extension.create({
@@ -107,7 +108,6 @@ export default function App() {
   const [windows, setWindows] = useState<Record<string, WindowData>>({ 'root': { id: 'root', tabs: [] } });
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
-  const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -770,235 +770,78 @@ export default function App() {
 
   return (
     <div className={`app-wrapper ${theme !== 'light' ? `${theme}-theme` : ''}`}>
-      <div className="global-menubar">
-        <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
-          <button onMouseEnter={() => setActiveMenu('data')} onClick={() => setActiveMenu(activeMenu === 'data' ? null : 'data')}>Data</button>
-          {activeMenu === 'data' && (
-            <div className="dropdown">
-              <button onClick={() => fileInputRef.current?.click()}>Import</button>
-              <button onClick={() => setIsExportModalOpen(true)}>Export</button>
-            </div>
-          )}
-        </div>
-
-        <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
-          <button onMouseEnter={() => setActiveMenu('sort')} onClick={() => setActiveMenu(activeMenu === 'sort' ? null : 'sort')}>Sort</button>
-          {activeMenu === 'sort' && (
-            <div className="dropdown">
-              <button className={globalSortMode === 'oldest' ? 'active' : ''} onClick={() => setGlobalSortMode('oldest')}>Oldest</button>
-              <button className={globalSortMode === 'newest' ? 'active' : ''} onClick={() => setGlobalSortMode('newest')}>Newest</button>
-              <button className={globalSortMode === 'alpha' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha')}>A-Z</button>
-              <button className={globalSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => setGlobalSortMode('alpha-desc')}>Z-A</button>
-            </div>
-          )}
-        </div>
-
-        <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
-          <button onMouseEnter={() => setActiveMenu('view')} onClick={() => setActiveMenu(activeMenu === 'view' ? null : 'view')}>View</button>
-          {activeMenu === 'view' && (
-            <div className="dropdown">
-              <button className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')}>Light Theme</button>
-              <button className={theme === 'gray' ? 'active' : ''} onClick={() => setTheme('gray')}>Gray Theme</button>
-              <button className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')}>Dark Theme</button>
-              <button onClick={() => {
-                const allTabs = Object.values(windows).flatMap(w => w.tabs);
-                if (expandedListNodes.size > 0) setExpandedListNodes(new Set());
-                else setExpandedListNodes(new Set(allTabs.map(t => t.id)));
-              }}>{expandedListNodes.size > 0 ? 'Collapse All' : 'Expand All'}</button>
-            </div>
-          )}
-        </div>
-
-        <div className="menu-item" onMouseLeave={() => setActiveMenu(null)}>
-          <button onMouseEnter={() => setActiveMenu('help')} onClick={() => setActiveMenu(activeMenu === 'help' ? null : 'help')}>Help</button>
-          {activeMenu === 'help' && (
-            <div className="dropdown">
-              <button onClick={() => setShowShortcuts(true)}>Show Shortcuts</button>
-            </div>
-          )}
-        </div>
-        
-        <div className="menubar-search">
-          <div className="content-search-wrapper">
-            <input placeholder="Search tabs by title..." value={globalSearch} onChange={handleSearch} onKeyDown={(e) => { if (e.key === 'Enter') cycleGlobalMatch(1); }} />
-            {globalMatches.length > 0 && (
-              <div className="search-nav">
-                <button onClick={() => cycleGlobalMatch(-1)}>▲</button>
-                <span>{currentGlobalIndex + 1}/{globalMatches.length}</span>
-                <button onClick={() => cycleGlobalMatch(1)}>▼</button>
-              </div>
-            )}
-          </div>
-          <div className="content-search-wrapper">
-            <input placeholder="Search content..." value={contentSearch} onChange={handleContentSearch} onKeyDown={(e) => { if (e.key === 'Enter') cycleMatch(1); }} />
-            {contentMatches.length > 0 && (
-              <div className="search-nav">
-                <button onClick={() => cycleMatch(-1)}>▲</button>
-                <span>{currentMatchIndex + 1}/{contentMatches.length}</span>
-                <button onClick={() => cycleMatch(1)}>▼</button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <MenuBar
+        fileInputRef={fileInputRef}
+        setIsExportModalOpen={setIsExportModalOpen}
+        globalSortMode={globalSortMode}
+        setGlobalSortMode={setGlobalSortMode}
+        theme={theme}
+        setTheme={setTheme}
+        windows={windows}
+        expandedListNodes={expandedListNodes}
+        setExpandedListNodes={setExpandedListNodes}
+        setShowShortcuts={setShowShortcuts}
+        globalSearch={globalSearch}
+        handleSearch={handleSearch}
+        globalMatches={globalMatches}
+        currentGlobalIndex={currentGlobalIndex}
+        cycleGlobalMatch={cycleGlobalMatch}
+        contentSearch={contentSearch}
+        handleContentSearch={handleContentSearch}
+        contentMatches={contentMatches}
+        currentMatchIndex={currentMatchIndex}
+        cycleMatch={cycleMatch}
+        listViewWidth={listViewWidth}
+        toggleSidebar={handleSidebarDoubleClick}
+      />
 
       <div className={`app-container ${theme !== 'light' ? `${theme}-theme` : ''}`}>
         <div className="miller-columns">
-          <ResizableBox 
-            width={listViewWidth} 
-            height={Infinity} 
-            axis="x" 
-            onResize={(_e, { size }) => setListViewWidth(size.width)}
-            onResizeStart={() => {
-              // Remember the width if the user manually drags it
-              if (listViewWidth > 20) setPrevListViewWidth(listViewWidth);
-            }}
-            minConstraints={[5, Infinity]} /* Changed from 250 to 5 so it can minimize */
-            maxConstraints={[600, Infinity]} 
-            handle={<div className="drag-handle" onDoubleClick={handleSidebarDoubleClick} />} 
-          >
-            <div className="column" style={{ width: '100%' }}>
-              <div className="column-header" style={{ borderBottom: 'none' }}><span className="header-title">LIBRARY</span></div>
-              <div className="tab-list tree-view">
-                <div className="root-footer">
-                  <button tabIndex={-1} className="add-btn" onClick={async () => { const newId = await addTab('root'); if (newId) setActiveTabId(newId); }}> + Add New Root Item</button>
-                </div>
-                {getFlattenedTabs(Object.values(windows).flatMap(w => w.tabs)).map(tab => {
-                    const isSearchMatch = globalSearch.trim() !== '' && tab.title.toLowerCase().includes(globalSearch.toLowerCase());
-                    const allTabs = Object.values(windows).flatMap(w => w.tabs);
-                    const hasChildren = allTabs.some(t => t.parentId === tab.id);
-                    const isActiveTab = tab.id === activeTabId;
-                    const showEye = isActiveTab && isEditorFocused
+          <Sidebar
+            listViewWidth={listViewWidth}
+            setListViewWidth={setListViewWidth}
+            setPrevListViewWidth={setPrevListViewWidth}
+            handleSidebarDoubleClick={handleSidebarDoubleClick}
+            windows={windows}
+            setWindows={setWindows}
+            activeTabId={activeTabId}
+            setActiveTabId={setActiveTabId}
+            editingTabId={editingTabId}
+            setEditingTabId={setEditingTabId}
+            expandedListNodes={expandedListNodes}
+            setExpandedListNodes={setExpandedListNodes}
+            globalSearch={globalSearch}
+            isEditorFocused={isEditorFocused}
+            addTab={addTab}
+            activateTab={activateTab}
+            getFlattenedTabs={getFlattenedTabs}
+          />
 
-                    return (
-                      <div key={tab.id}>
-                        <div 
-                          id={`tab-row-${tab.id}`} tabIndex={-1}
-                          className={`tab-row ${activeTabId === tab.id ? 'active' : ''} ${isSearchMatch ? 'search-highlight' : ''}`}
-                          onClick={() => activateTab(tab)}
-                          style={{ paddingLeft: `${(tab as any).depth * 20 + 12}px` }}
-                        >
-                          <span className="tree-indicator" style={{ cursor: hasChildren ? 'pointer' : 'default' }} onClick={(e) => {
-                              if (hasChildren) {
-                                e.stopPropagation();
-                                setExpandedListNodes(prev => { const next = new Set(prev); if (next.has(tab.id)) next.delete(tab.id); else next.add(tab.id); return next; });
-                              }
-                            }}
-                          >
-                            {hasChildren ? (expandedListNodes.has(tab.id) ? '▼' : '▶') : '•'}
-                          </span>
-                          {editingTabId === tab.id ? (
-                            <input autoFocus value={tab.title} onBlur={() => setEditingTabId(null)} onKeyDown={(e) => { if (e.key === 'Enter') setEditingTabId(null); }} onChange={(e) => {
-                                const next = { ...windows };
-                                Object.keys(next).forEach(winId => { const t = next[winId].tabs.find(i => i.id === tab.id); if (t) t.title = e.target.value; });
-                                setWindows(next);
-                              }}
-                            />
-                          ) : ( <span className="tab-title">{tab.title}</span> )}
-                          {showEye && ( <Eye size={14} className={`tab-eye-icon ${isActiveTab ? 'active-eye' : ''} ${isSearchMatch ? 'search-eye' : ''}`} /> )}
-                        </div>
-                        {activeTabId === tab.id && (
-                          <div className="tab-list-actions" style={{ paddingLeft: `${((tab as any).depth + 1) * 20 + 24}px` }}>
-                            <button tabIndex={-1} className="add-btn" onClick={async () => { const newId = await addTab(tab.id); if (newId) setActiveTabId(newId); }}>+ Add Child</button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-                }
-              </div>
-            </div>
-          </ResizableBox>
-
-          <div className="writing-space">
-            {activeTabId && isEditorOpen && editor ? (
-              <div className="editor-wrapper">
-                <EditorToolbar editor={editor} windows={windows} saveStatus={saveStatus} lastSaved={lastSaved} handleManualRetry={() => setWindows(p => ({...p}))} />
-                {/* NEW: Apply the zoom level directly to the editor content */}
-                <EditorContent editor={editor} className="rich-editor" style={{ zoom: `${zoomLevel}%` }} />
-                <EditorContent editor={editor} className="rich-editor" style={{ zoom: `${zoomLevel}%` }} />
-                
-                {/* NEW: Search and Replace Floating UI */}
-                {showReplace && (
-                  <div className="replace-overlay" style={{
-                    position: 'absolute', top: '60px', right: '20px', 
-                    backgroundColor: 'var(--bg-main, #ffffff)', border: '1px solid var(--border-color, #ccc)',
-                    padding: '10px', borderRadius: '6px', display: 'flex', gap: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 100, alignItems: 'center'
-                  }}>
-                    <input 
-                      autoFocus placeholder="Find..." value={replaceQuery} 
-                      onChange={e => setReplaceQuery(e.target.value)}
-                      style={{ padding: '4px 8px', width: '120px' }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          setShowReplace(false);
-                          if (editor) editor.commands.focus();
-                        }
-                      }}
-                    />
-                    <input 
-                      placeholder="Replace with..." value={replaceWith} 
-                      onChange={e => setReplaceWith(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleReplaceAll()}
-                      style={{ padding: '4px 8px', width: '120px' }}
-                    />
-                    <button onClick={handleReplaceAll} style={{ padding: '4px 8px', cursor: 'pointer' }}>Replace All</button>
-                    <button onClick={() => setShowReplace(false)} style={{ padding: '4px 8px', cursor: 'pointer', color: '#ff4d4d' }}>✕</button>
-                  </div>
-                )}
-                
-                {/* NEW: Updated Footer with Cursor Stats */}
-                <div className="editor-footer">
-                  <div className="stat">Length: <span>{stats.chars}</span> <span style={{opacity:0.6, fontWeight:'normal'}}>(Pos: {cursor.char})</span></div>
-                  <div className="stat">Words: <span>{stats.words}</span> <span style={{opacity:0.6, fontWeight:'normal'}}>(Pos: {cursor.word})</span></div>
-                  <div className="stat">Lines: <span>{stats.lines}</span> <span style={{opacity:0.6, fontWeight:'normal'}}>(Pos: {cursor.line})</span></div>
-                </div>
-              </div>
-            ) : (
-              <div className="empty-state">
-                {activeTabId ? <span>Editor hidden. Press <strong>ENTER</strong> to open.</span> : "Select an item to view/edit content."}
-              </div>
-            )}
-          </div>
+          <WritingSpace
+            activeTabId={activeTabId}
+            isEditorOpen={isEditorOpen}
+            editor={editor}
+            windows={windows}
+            setWindows={setWindows}
+            saveStatus={saveStatus}
+            lastSaved={lastSaved}
+            zoomLevel={zoomLevel}
+            showReplace={showReplace}
+            setShowReplace={setShowReplace}
+            replaceQuery={replaceQuery}
+            setReplaceQuery={setReplaceQuery}
+            replaceWith={replaceWith}
+            setReplaceWith={setReplaceWith}
+            handleReplaceAll={handleReplaceAll}
+            stats={stats}
+            cursor={cursor}
+          />
         </div>
       </div>
 
       {isExportModalOpen && <ExportModal windows={windows} onClose={() => setIsExportModalOpen(false)} />}
       
-      {showShortcuts && (
-        <div className="modal-overlay" onClick={() => setShowShortcuts(false)}>
-           <div className="export-modal" onClick={e => e.stopPropagation()}>
-             <h3 style={{color: 'var(--accent-color)', margin: '0 0 15px 0'}}>Keyboard Shortcuts</h3>
-             <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', fontSize: '13px', color: 'var(--text-main)'}}>
-                <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
-                  <span><strong>Encyclopedia control shortcuts</strong></span>
-                  <span><strong>ARROWS:</strong> Navigate tabs</span>
-                  <span><strong>ENTER:</strong> Open/Activate tab</span>
-                  <span><strong>CTRL+E:</strong> Focus/Unfocus Editor</span>
-                  <span><strong>CTRL+A:</strong> Add Child Tab</span>
-                  <span><strong>F2:</strong> Rename Tab</span>
-                  <span><strong>DEL:</strong> Delete Tab</span>
-                  <span><strong>Double click vertical border:</strong> Minimize/Expand library</span>
-                </div>
-                <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
-                  <span><strong>Editor control shortcuts</strong></span>
-                  <span><strong>CTRL+F:</strong> Find tabs/content</span>
-                  <span><strong>CTRL+Scroll:</strong> Zoom In/Out Editor</span>
-                  <span><strong>SHIFT+ALT+Up/Down:</strong> Move text line</span>
-                  <span><strong>CTRL+B:</strong> Bold text</span>
-                  <span><strong>CTRL+I:</strong> Italic text</span>
-                  <span><strong>CTRL+U:</strong> Underline text</span>
-                  <span><strong>CTRL+C/V:</strong> Copy/Paste content</span>
-                  <span><strong>CTRL+Z/Y:</strong> Undo/Redo action</span>
-                </div>
-             </div>
-             <div className="modal-actions" style={{marginTop: '25px'}}>
-               <button className="confirm-btn" onClick={() => setShowShortcuts(false)}>Close</button>
-             </div>
-           </div>
-        </div>
-      )}
+      <ShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   );
 }
