@@ -72,11 +72,31 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
           <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''} title="Italic"><Italic size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={editor.isActive('underline') ? 'is-active' : ''} title="Underline"><UnderlineIcon size={18} /></button>
           <button onClick={() => editor.chain().focus().toggleStrike().run()} className={editor.isActive('strike') ? 'is-active' : ''} title="Strike"><Strikethrough size={18} /></button>
-          <div className="color-picker-wrapper">
-            <input type="color" onInput={e => editor.chain().focus().setColor((e.target as HTMLInputElement).value).run()} value={editor.getAttributes('textStyle').color || '#000000'} title="Text Color" />
+          <div className="color-picker-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '60px' }}>
+            <input 
+              type="color" 
+              onInput={e => editor.chain().focus().toggleHighlight({ color: (e.target as HTMLInputElement).value }).run()} 
+              value={editor.getAttributes('highlight').color || '#ffff00'} 
+              title="Background Color" 
+            />
+            <button 
+              onClick={() => editor.chain().focus().unsetHighlight().run()} 
+              title="Clear Background Color"
+              style={{ padding: '2px 4px', fontSize: '10px' }}
+            >✕</button>
           </div>
-          <div className="color-picker-wrapper">
-            <input type="color" onInput={e => editor.chain().focus().toggleHighlight({ color: (e.target as HTMLInputElement).value }).run()} value={editor.getAttributes('highlight').color || '#ffff00'} title="Background Color" />
+          <div className="color-picker-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '60px' }}>
+            <input 
+              type="color" 
+              onInput={e => editor.chain().focus().setColor((e.target as HTMLInputElement).value).run()} 
+              value={editor.getAttributes('textStyle').color || '#000000'} 
+              title="Text Color" 
+            />
+            <button 
+              onClick={() => editor.chain().focus().unsetColor().run()} 
+              title="Clear Text Color"
+              style={{ padding: '2px 4px', fontSize: '10px' }}
+            >✕</button>
           </div>
         </Section>
 
@@ -109,7 +129,7 @@ export default function EditorToolbar({ editor, windows, saveStatus, lastSaved, 
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
             
             {/* 1. Table icon on its own */}
-            <button onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()} title="Insert Table">
+            <button onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run()} title="Insert Table">
               <TableIcon size={18} />
             </button>
 
