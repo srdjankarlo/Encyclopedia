@@ -105,6 +105,7 @@ const CustomEditorShortcuts = Extension.create({
 });
 
 export default function App() {
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [windows, setWindows] = useState<Record<string, WindowData>>({ 'root': { id: 'root', tabs: [] } });
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
@@ -138,13 +139,33 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   
-  const isInitialMount = useRef(true);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // const fileInputRef = useRef<HTMLInputElement>(null);  // Import
 
   const windowsRef = useRef(windows);
   useEffect(() => {
     windowsRef.current = windows;
   }, [windows]);
+
+  const loadFromDb = async () => {
+    try {
+      const dbTabs: any[] = await invoke('get_tabs');
+      if (!dbTabs || dbTabs.length === 0) return;
+
+      const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
+      dbTabs.forEach(t => { if (t.id) newWindows[t.id] = { id: t.id, tabs: [], collapsed: false }; });
+      
+      dbTabs.forEach(t => {
+        const targetWinId = t.parent_id || 'root';
+        if (!newWindows[targetWinId]) newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
+        newWindows[targetWinId].tabs.push({ id: t.id, title: t.title, content: t.content, createdAt: Number(t.created_at), parentId: t.parent_id });
+      });
+      setWindows(newWindows);
+    } catch (e) { console.error("❌ DB Load failed", e); }
+  };
+
+  useEffect(() => {
+    loadFromDb();
+  }, []);
 
   // NEW: Ctrl + Wheel Zoom Listener for the Editor
   useEffect(() => {
@@ -249,6 +270,7 @@ export default function App() {
     content: '',
     onUpdate: ({ editor }) => {
       if (!activeTabId) return;
+      setHasUnsavedChanges(true);
       const html = editor.getHTML();
       setWindows(prev => {
         const next = { ...prev };
@@ -262,25 +284,6 @@ export default function App() {
     onFocus: () => setIsEditorFocused(true),
     onBlur: () => setIsEditorFocused(false),
   }, [activeTabId]);
-
-  useEffect(() => {
-    if (!editor || !activeTabId) return;
-    const handleUpdate = () => {
-      const html = editor.getHTML();
-      const currentTab = Object.values(windowsRef.current).flatMap(w => w.tabs).find(t => t.id === activeTabId);
-      if (currentTab && currentTab.content === html) return;
-      setWindows(prev => {
-        const next = { ...prev };
-        for (const winId in next) {
-          const tab = next[winId].tabs.find(t => t.id === activeTabId);
-          if (tab) { tab.content = html; break; }
-        }
-        return next;
-      });
-    };
-    editor.on('update', handleUpdate);
-    return () => { editor.off('update', handleUpdate); };
-  }, [editor, activeTabId]);
 
   const addTab = async (windowId: string) => {
     const win = windows[windowId];
@@ -376,7 +379,10 @@ export default function App() {
     return result;
   };
 
-  const activateTab = (tab: Tab) => setActiveTabId(tab.id);
+  // const activateTab = (tab: Tab) => setActiveTabId(tab.id);
+  const activateTab = (tab: Tab) => {
+    handleTabSwitch(tab);
+  };
 
   // Helper: Smoothly scroll the sidebar to a specific tab
   const scrollToTabInSidebar = (tabId: string) => {
@@ -414,41 +420,40 @@ export default function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  useEffect(() => {
-    const loadFromDb = async () => {
-      try {
-        const dbTabs: any[] = await invoke('get_tabs');
-        if (!dbTabs || dbTabs.length === 0) return;
-
-        const newWindows: Record<string, WindowData> = { 'root': { id: 'root', tabs: [] } };
-        dbTabs.forEach(t => { if (t.id) newWindows[t.id] = { id: t.id, tabs: [], collapsed: false }; });
-        
-        dbTabs.forEach(t => {
-          const targetWinId = t.parent_id || 'root';
-          if (!newWindows[targetWinId]) newWindows[targetWinId] = { id: targetWinId, tabs: [], collapsed: false };
-          newWindows[targetWinId].tabs.push({ id: t.id, title: t.title, content: t.content, createdAt: Number(t.created_at), parentId: t.parent_id });
-        });
-        setWindows(newWindows);
-      } catch (e) { console.error("❌ DB Load failed", e); }
-    };
-    loadFromDb();
-  }, []);
-
-  useEffect(() => {
-    if (isInitialMount.current) { isInitialMount.current = false; return; }
+  const saveAllTabs = async () => {
     setSaveStatus('saving');
-    const timer = setTimeout(async () => {
-      try {
-        const promises = Object.entries(windows).flatMap(([winId, win]) => 
-          win.tabs.map(tab => invoke('save_tab', { tab: { id: tab.id, title: tab.title, content: tab.content, parent_id: winId === 'root' ? null : winId, child_window_id: tab.id, created_at: tab.createdAt } }))
-        );
-        await Promise.all(promises);
-        setSaveStatus('saved');
-        setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-      } catch (e) { setSaveStatus('error'); }
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [windows]);
+    try {
+      const promises = Object.entries(windows).flatMap(([winId, win]) => 
+        win.tabs.map(tab => invoke('save_tab', { tab: { id: tab.id, title: tab.title, content: tab.content, parent_id: winId === 'root' ? null : winId, child_window_id: tab.id, created_at: tab.createdAt } }))
+      );
+      await Promise.all(promises);
+      setSaveStatus('saved');
+      setHasUnsavedChanges(false);
+      setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    } catch (e) { 
+      setSaveStatus('error'); 
+    }
+  };
+
+  const handleTabSwitch = async (tab: Tab) => {
+    if (tab.id === activeTabId) return;
+
+    if (hasUnsavedChanges) {
+      const shouldSave = await ask('You have unsaved changes. Do you want to save them?', { 
+        title: 'Unsaved Changes', 
+        kind: 'warning' 
+      });
+      
+      if (shouldSave) {
+        await saveAllTabs();
+      } else {
+        // Revert dirty React state back to DB state
+        await loadFromDb();
+      }
+    }
+    setHasUnsavedChanges(false);
+    setActiveTabId(tab.id);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -469,6 +474,13 @@ export default function App() {
           if (activeTabId) addTab(activeTabId).then(newId => { if (newId) setActiveTabId(newId); });
           return;
         }
+      }
+      
+      // Save
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveAllTabs();
+        return;
       }
 
       // NEW: Search and Replace (CTRL+R)
@@ -609,9 +621,12 @@ export default function App() {
         const tab = windows[winId].tabs.find(t => t.id === activeTabId);
         if (tab) { content = tab.content; break; }
       }
-      if (content !== editor.getHTML()) editor.commands.setContent(content);
+      if (content !== editor.getHTML()) {
+        editor.commands.setContent(content, { emitUpdate: false });
+      }
+      setHasUnsavedChanges(false);
     }
-  }, [activeTabId, editor, windows]);
+  }, [activeTabId, editor]);
 
   useEffect(() => {
     const scanLinks = () => {
@@ -771,7 +786,7 @@ export default function App() {
   return (
     <div className={`app-wrapper ${theme !== 'light' ? `${theme}-theme` : ''}`}>
       <MenuBar
-        fileInputRef={fileInputRef}
+        // fileInputRef={fileInputRef}  // Import
         setIsExportModalOpen={setIsExportModalOpen}
         globalSortMode={globalSortMode}
         setGlobalSortMode={setGlobalSortMode}
@@ -813,7 +828,7 @@ export default function App() {
             globalSearch={globalSearch}
             isEditorFocused={isEditorFocused}
             addTab={addTab}
-            activateTab={activateTab}
+            activateTab={handleTabSwitch}
             getFlattenedTabs={getFlattenedTabs}
           />
 

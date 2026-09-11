@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import type { Tab, WindowData, SortMode } from '../types';
 
 interface MenuBarProps {
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  // fileInputRef: React.RefObject<HTMLInputElement | null>;  // Import
   setIsExportModalOpen: (open: boolean) => void;
   globalSortMode: SortMode;
   setGlobalSortMode: (mode: SortMode) => void;
@@ -27,7 +27,7 @@ interface MenuBarProps {
 }
 
 export default function MenuBar({
-  fileInputRef,
+  // fileInputRef,  // Import
   setIsExportModalOpen,
   globalSortMode,
   setGlobalSortMode,
@@ -73,7 +73,8 @@ export default function MenuBar({
         </button>
         {activeMenu === 'data' && (
           <div className="dropdown">
-            <button onClick={() => fileInputRef.current?.click()}>Import</button>
+            {/* ToDo: make import possible */}
+            {/* <button onClick={() => fileInputRef.current?.click()}>Import</button> */}
             <button onClick={() => setIsExportModalOpen(true)}>Export</button>
           </div>
         )}

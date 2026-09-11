@@ -28,6 +28,7 @@ export default function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps)
             <span><strong>ENTER:</strong> Open/Activate tab</span>
             <span><strong>CTRL+E:</strong> Focus/Unfocus Editor</span>
             <span><strong>CTRL+A:</strong> Add Child Tab</span>
+            <span><strong>CTRL+S:</strong> Save Changes</span>
             <span><strong>F2:</strong> Rename Tab</span>
             <span><strong>DEL:</strong> Delete Tab</span>
             <span><strong>Double click vertical border:</strong> Minimize/Expand library</span>
